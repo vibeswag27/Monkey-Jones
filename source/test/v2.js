@@ -1,0 +1,22 @@
+const { open, step, until } = require('./lib2');
+(async () => {
+  const ev = (page, src) => page.evaluate((src) => new Function('m', src)(window.__mj), src);
+  const { browser, page, errors } = await open({ w: 390, h: 760 });
+  const shot = async (n) => { await new Promise((r) => setTimeout(r, 350)); await step(page, 0.02); await page.screenshot({ path: `shots/v2-${n}.png` }); };
+  await ev(page, 'm.Save.data.wallet = 480; m.Save.data.up.magnet = 3; m.Save.data.up.rocket = 6; m.Save.data.runs = 5; m.UI.refreshTitle()');
+  await step(page, 1.0); await shot('title');
+  await ev(page, 'm.UI.openShop()'); await shot('shop');
+  await ev(page, 'm.UI.buy("double"); m.UI.buy("double")'); await shot('shop2');
+  await ev(page, 'm.UI.setState("title"); m.Game.startIntro(false)');
+  await until(page, 'm.Game.state === "run"', 5, false);
+  console.log(await until(page, '(m.Player.seg.pickups.some(p => !p.got && p.s - m.Player.s < 11 && p.s - m.Player.s > 6)) || m.Game.state !== "run"', 120, true));
+  await shot('pickup');
+  await ev(page, 'm.Game.take({kind:"rocket",got:false,sprite:null})'); await step(page, 1.3, true); await shot('fly1');
+  console.log(await until(page, 'm.Player.s > m.Player.seg.len - 12 || !m.Player.flying', 10, true)); await shot('fly2');
+  await until(page, '!m.Player.flying', 20, true); await step(page, 0.25, true); await shot('landing');
+  await ev(page, 'for (const k of ["springs","magnet","double","shield"]) m.Game.take({kind:k,got:false,sprite:null})');
+  console.log(await until(page, '(!m.Player.grounded && m.Player.y > 2.9) || m.Game.state !== "run"', 60, true)); await shot('springs');
+  await ev(page, 'm.Player.die("bonk")'); await until(page, 'm.Game.state === "over"', 6, false); await shot('over');
+  console.log(errors.filter((e) => !/ReadPixels/.test(e)).join('\n') || 'no errors');
+  await browser.close();
+})().catch((e) => { console.error('FAIL', e); process.exit(1); });

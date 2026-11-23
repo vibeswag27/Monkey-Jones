@@ -1,0 +1,20 @@
+const { open, step, until } = require('./lib2');
+const [, , W = '390', H = '760', tag = 'p'] = process.argv;
+(async () => {
+  const { browser, page, errors } = await open({ w: +W, h: +H });
+  const shot = (n) => page.screenshot({ path: `shots/${tag}-${n}.png` });
+  await step(page, 0.5);
+  await page.evaluate(() => window.__mj.Game.startIntro(false));
+  await step(page, 0.4); await shot('intro1');
+  await step(page, 0.6); await shot('intro2');
+  await step(page, 0.9); await shot('run0');
+  await until(page, '!m.Player.grounded && m.Player.y > 1.2'); await shot('jump');
+  await until(page, 'm.Player.slide > 0.4'); await shot('slide');
+  await until(page, 'm.Player.s > 84'); await shot('pillars');
+  await until(page, 'm.Player.s > 112'); await shot('junction');
+  console.log(await until(page, 'm.Game.run.turns > 0')); await step(page, 0.25, true); await shot('turned');
+  console.log(await until(page, 'm.Game.run.dist > 620 || m.Game.state !== "run"', 90)); await shot('sunset');
+  console.log(await until(page, 'm.Game.run.dist > 1450 || m.Game.state !== "run"', 120)); await shot('night');
+  console.log(errors.filter((e) => !/ReadPixels/.test(e)).join('\n') || 'no errors');
+  await browser.close();
+})().catch((e) => { console.error('FAIL', e); process.exit(1); });
