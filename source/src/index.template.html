@@ -51,6 +51,8 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cu
 .chip svg{width:25px;height:25px;flex:none}
 .chip.pop{animation:pop .18s}
 .mult{background:var(--banana);padding:0 11px;font-size:17px}
+.lvl{padding:0 11px;font-size:17px}
+.hud-row{display:flex;align-items:center;gap:8px}
 .powers{display:flex;flex-direction:column;gap:7px}
 .pw{display:flex;align-items:center;gap:7px;background:var(--cream);border:3px solid var(--ink);border-radius:13px;padding:3px 9px 3px 5px;box-shadow:0 3px 0 var(--ink);font-size:14px;font-weight:700}
 .pw svg{width:22px;height:22px;flex:none}
@@ -75,9 +77,27 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
 .hint svg{width:30px;height:30px;flex:none;animation:nudge .5s ease-in-out infinite alternate}
 @keyframes nudge{to{transform:var(--nudge,translateY(-5px))}}
 
-.toast{position:absolute;left:50%;top:30%;transform:translateX(-50%);font-family:var(--display);font-size:clamp(22px,7vw,34px);color:var(--banana);--stroke:7px;--drop:4px;white-space:nowrap;opacity:0}
+.toast{position:absolute;left:50%;top:36%;transform:translateX(-50%);font-family:var(--display);font-size:clamp(22px,7vw,34px);color:var(--banana);--stroke:7px;--drop:4px;white-space:nowrap;opacity:0}
 .toast.on{animation:toast 1.5s ease-out}
 @keyframes toast{0%{opacity:0;transform:translateX(-50%) scale(.6)}12%{opacity:1;transform:translateX(-50%) scale(1.08)}20%{transform:translateX(-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-14px)}}
+
+/* a new level: the number in the logo's lettering, and the name of the place on the logo's ribbon */
+.levelup{position:absolute;left:50%;top:19%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap;opacity:0}
+.levelup .num{font-family:var(--display);font-size:clamp(34px,11.5vw,58px);line-height:1;color:var(--banana);--stroke:9px;--drop:5px;transform:rotate(-4deg)}
+.levelup .ribbon{margin:.42em 0 0 16%;font-size:clamp(15px,4.6vw,22px)}
+.levelup.sea .ribbon{background:#0A8C8A}
+.levelup.on{animation:levelup 2.2s ease-out}
+/* announcements belong to the run: they never linger over the menus */
+.toast,.levelup{visibility:hidden}
+[data-state="intro"] .toast,[data-state="run"] .toast,[data-state="count"] .toast,[data-state="dying"] .toast,[data-state="intro"] .levelup,[data-state="run"] .levelup,[data-state="count"] .levelup,[data-state="dying"] .levelup{visibility:visible}
+@keyframes levelup{0%{opacity:0;transform:translateX(-50%) scale(.5)}9%{opacity:1;transform:translateX(-50%) scale(1.1)}16%{transform:translateX(-50%) scale(1)}84%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-16px)}}
+
+/* under water: the corners of the view fall away into deep blue, and a wash of foam marks going under or coming up */
+#sea{opacity:0;transition:opacity .45s;background:radial-gradient(ellipse at 50% 44%,rgba(6,52,74,0) 48%,rgba(5,44,66,.5) 100%)}
+#sea.on{opacity:1}
+#plunge{opacity:0;background:linear-gradient(rgba(214,252,250,.92),rgba(74,198,212,.88))}
+#plunge.on{animation:plunge .6s ease-out}
+@keyframes plunge{0%{opacity:0}16%{opacity:.82}100%{opacity:0}}
 
 /* ---------- Screens ---------- */
 .screen{opacity:0;visibility:hidden;transition:opacity .2s,visibility 0s .2s}
@@ -187,6 +207,15 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
   .title-foot{gap:8px}
   .title-foot .big{font-size:24px}
   .how{font-size:15px}
+  /* a phone on its side: the cards go wide and short, with the stats two to a row */
+  #over .card,#pause .card{width:min(100%,440px);padding:12px 20px 16px;gap:8px}
+  #over .boom,#pause .boom{font-size:clamp(24px,8.5vh,32px)}
+  #over .sub{font-size:15px;margin-top:-2px}
+  #over .stats{grid-template-columns:1fr auto 1fr auto;gap:2px 14px;font-size:16px}
+  #over .stats dd:nth-of-type(odd){margin-right:16px}
+  #over .card .big,#pause .card .big{font-size:22px}
+  .levelup{top:13%}
+  .toast{top:46%}
 }
 @media (prefers-reduced-motion: reduce){ .pulse,.hint svg,#danger.on{animation:none} #danger.on{box-shadow:inset 0 -40px 90px 0 rgba(239,60,30,.5)} }
 </style>
@@ -194,12 +223,17 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
 <body>
 <div id="stage" data-state="title">
   <canvas id="c" tabindex="-1" aria-label="Monkey Jones running through the jungle ruins"></canvas>
+  <div id="sea" class="layer"></div>
+  <div id="plunge" class="layer"></div>
   <div id="danger" class="layer"></div>
 
   <div id="hud" class="layer">
     <div class="hud-left">
       <div id="score" class="score inked" data-t="0">0</div>
-      <div id="mult" class="chip mult">×1</div>
+      <div class="hud-row">
+        <div id="level" class="chip lvl">Level 1</div>
+        <div id="mult" class="chip mult" aria-label="Score multiplier">×1</div>
+      </div>
       <div id="powers" class="powers"></div>
     </div>
     <div class="hud-right">
@@ -215,6 +249,7 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
 
   <div class="layer"><div id="hint" class="hint"><span id="hintIcon"></span><span id="hintText"></span></div></div>
   <div class="layer"><div id="toast" class="toast inked" data-t=""></div></div>
+  <div class="layer"><div id="levelUp" class="levelup" aria-live="polite"><span id="levelNum" class="num inked" data-t="Level 1">Level 1</span><span id="levelName" class="ribbon">Jungle Ruins</span></div></div>
 
   <div id="title" class="layer screen">
     <div class="title-head">
@@ -271,6 +306,7 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
       <dl class="stats">
         <dt>Score</dt><dd id="oScore">0</dd>
         <dt>Distance</dt><dd id="oDist">0 m</dd>
+        <dt>Level</dt><dd id="oLevel">1</dd>
         <dt>Bananas</dt><dd id="oNanas">0</dd>
         <dt>Best</dt><dd id="oBest">0</dd>
       </dl>

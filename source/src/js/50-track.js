@@ -2,18 +2,20 @@
 // The path is a tree of straight stretches joined by square junctions. Each stretch knows its
 // obstacles, holes, bananas and pick-ups in its own (s = distance along, x = sideways) coordinates.
 let SEG_ID = 0;
+const SEA_LIFE_Y = -2.5; // once the tide is this high, the sea life of a High Tide stretch is shown
 
 class Seg {
   constructor(parent, turn) {
     this.id = SEG_ID++;
     this.parent = parent; this.turn = turn;
-    if (!parent) { this.heading = 0; this.ox = 0; this.oz = 0; this.dist0 = 0; this.first = true; }
+    if (!parent) { this.heading = 0; this.ox = 0; this.oz = 0; this.dist0 = 0; this.first = true; this.depth = Seg.startDepth || 0; }
     else {
       this.heading = turn === 'R' ? (parent.heading + 1) % 4 : (parent.heading + 3) % 4;
       const d = DIRS[parent.heading];
       this.ox = parent.ox + d.fx * parent.len; this.oz = parent.oz + d.fz * parent.len;
-      this.dist0 = parent.dist0 + parent.len; this.first = false;
+      this.dist0 = parent.dist0 + parent.len; this.first = false; this.depth = parent.depth + 1;
     }
+    this.level = levelOf(this.depth); this.sea = isSea(this.level);
     this.dir = DIRS[this.heading]; this.yaw = yawOf(this.heading);
     this.obstacles = []; this.holes = []; this.holeCells = new Set(); this.bananas = []; this.pickups = [];
     this.kids = { L: null, R: null };
@@ -29,7 +31,11 @@ class Seg {
 
 // ── layout: decide what goes where on a stretch ──
 function genSegment(seg, W) {
-  const rng = W.rng, v = speedAt(seg.dist0), lvl = seg.dist0 / 450;
+  const rng = W.rng, L = seg.level, v = levelSpeed(L);
+  const prog = seg.depth / LEVEL_STRETCHES;                  // 0 at the start, 1 where level 2 begins, …
+  const hard = Math.min(4, Math.pow(1.22, L - 1));           // how far the tricky patterns outweigh the simple ones
+  const tight = Math.max(0.78, Math.pow(0.975, L - 1));      // two-part patterns close up a little each level too
+  const dZig = Math.max(v * 0.62 * tight, 9), dLogBeam = Math.max(v * tight, 12), dBeamLog = Math.max(v * 0.95 * tight, 12);
   seg.v = v;
   const tutorial = seg.first && W.tutorial;
   seg.jt = seg.heading === 0 ? rng.weighted([[1, 'L'], [1, 'R'], [0.85, 'T']]) : seg.heading === 1 ? 'L' : 'R';
@@ -71,7 +77,7 @@ function genSegment(seg, W) {
     beam(s) { addBeam(s); line(s - 3.8, s + 3.8, rng.int(0, 2), 0.5); return 1; },
     beamPillar(s) { addBeam(s); const lane = rng.int(0, 2); addPillar(s, lane); line(s - 5.7, s + 3.8, rng.pick(others(lane)), 0.5); return 1.3; },
     gap(s) {
-      const rows = v < 15 ? 1 : v < 20.5 ? 2 : 3, k = rowOf(s);
+      const rows = v < 15 ? 1 : v < 20.5 ? 2 : v < 26 ? 3 : 4, k = rowOf(s);
       if (k + rows + 2 >= seg.nRows) return -1;
       addHole(k, rows, [0, 1, 2]);
       arc(rowS(k) + (rows * ROW) / 2, rng.int(0, 2));
@@ -80,7 +86,7 @@ function genSegment(seg, W) {
     narrow(s) {
       const rows = clamp(Math.round((v * rng.range(0.75, 1.05)) / ROW), 4, 7), k = rowOf(s);
       if (k + rows + 2 >= seg.nRows) return -1;
-      const mode = rng.weighted([[lvl > 3 ? 2 : 1, 'one'], [1.4, 'two'], [1, 'split']]);
+      const mode = rng.weighted([[L > 4 ? 2 : 1, 'one'], [1.4, 'two'], [1, 'split']]);
       let gone, keep;
       if (mode === 'one') { keep = rng.int(0, 2); gone = others(keep); }
       else if (mode === 'two') { const g = rng.pick([0, 2]); gone = [g]; keep = rng.pick(others(g)); }
@@ -90,14 +96,14 @@ function genSegment(seg, W) {
       return rowS(k + rows) - s;
     },
     zig(s) {
-      const a = rng.int(0, 2), b = a === 1 ? rng.pick([0, 2]) : 1, d = Math.max(v * 0.62, 9);
+      const a = rng.int(0, 2), b = a === 1 ? rng.pick([0, 2]) : 1, d = dZig;
       for (const l of others(a)) addPillar(s, l);
       for (const l of others(b)) addPillar(s + d, l);
       line(s - 5.7, s, a); line(s + d - 3.8, s + d + 1.9, b);
       return d + 1.3;
     },
-    logBeam(s) { const d = Math.max(v, 12), lane = rng.int(0, 2); addLog(s, 0, 2); addBeam(s + d); arc(s, lane); line(s + d - 3.8, s + d + 1.9, lane, 0.5); return d + 1; },
-    beamLog(s) { const d = Math.max(v * 0.95, 12), lane = rng.int(0, 2); addBeam(s); addLog(s + d, 0, 2); line(s - 3.8, s + 1.9, lane, 0.5); arc(s + d, lane); return d + 1; },
+    logBeam(s) { const d = dLogBeam, lane = rng.int(0, 2); addLog(s, 0, 2); addBeam(s + d); arc(s, lane); line(s + d - 3.8, s + d + 1.9, lane, 0.5); return d + 1; },
+    beamLog(s) { const d = dBeamLog, lane = rng.int(0, 2); addBeam(s); addLog(s + d, 0, 2); line(s - 3.8, s + 1.9, lane, 0.5); arc(s + d, lane); return d + 1; },
     rubble(s) {
       const a = rng.int(0, 2), two = rng.chance(0.45), b = two ? rng.pick(others(a)) : -1;
       addRubble(s, a); if (two) addRubble(s, b);
@@ -116,7 +122,7 @@ function genSegment(seg, W) {
       return ss - s - 1.9;
     },
   };
-  const need = { pillars1: 1.3, pillars2: 1.3, log: 1, beam: 1, beamPillar: 1.3, gap: 4 * ROW, narrow: 8 * ROW, zig: Math.max(v * 0.62, 9) + 1.3, logBeam: Math.max(v, 12) + 1, beamLog: Math.max(v, 12) + 1, rubble: 1.2, mixed: 1.3, bananas: 21 };
+  const need = { pillars1: 1.3, pillars2: 1.3, log: 1, beam: 1, beamPillar: 1.3, gap: 5 * ROW, narrow: 8 * ROW, zig: dZig + 1.3, logBeam: dLogBeam + 1, beamLog: dBeamLog + 1, rubble: 1.2, mixed: 1.3, bananas: 21 };
 
   if (tutorial) { // a gentle opening that teaches one move at a time
     line(7.6, 22.8, 1);
@@ -128,14 +134,15 @@ function genSegment(seg, W) {
     let s = seg.first ? 30 : seg.floorStart + Math.max(11, v * 0.95);
     if (seg.first) line(7.6, 19, 1);
     const end = seg.len - HJ - Math.max(11, v * 0.8);
-    const tGap = lerp(1.3, 0.9, clamp(lvl / 9, 0, 1));
+    const tGap = levelGap(L);
+    const hop = seg.sea ? 1.5 : 1; // under water the things to hop over are seals, so there are more of them
     let last = '';
     while (s < end - 2) {
-      const on = (min, w) => (lvl >= min ? w : 0);
+      const on = (min, w) => (prog >= min ? w : 0);
       const table = [
-        [3, 'pillars1'], [lvl > 0.4 ? 2.3 : 0.7, 'pillars2'], [3, 'log'], [2.5, 'beam'], [1, 'bananas'],
-        [on(0.45, 2.3), 'gap'], [on(0.8, 1.6), 'rubble'], [on(1.2, 1.6), 'mixed'], [on(1.5, 1.3), 'beamPillar'],
-        [on(1.5, 1.8), 'narrow'], [on(1.8, 1.8), 'zig'], [on(2.2, 1.5), 'logBeam'], [on(2.2, 1.3), 'beamLog'],
+        [3, 'pillars1'], [prog >= 0.5 ? 2.3 : 0.7, 'pillars2'], [3 * hop, 'log'], [2.5, 'beam'], [1 / hard, 'bananas'],
+        [on(0.5, 2.3), 'gap'], [on(0.75, 1.6), 'rubble'], [on(1, 1.6 * hard * hop), 'mixed'], [on(1.75, 1.3 * hard), 'beamPillar'],
+        [on(2, 1.8 * hard), 'narrow'], [on(2.25, 1.8 * hard), 'zig'], [on(2.75, 1.5 * hard * hop), 'logBeam'], [on(2.75, 1.3 * hard * hop), 'beamLog'],
       ];
       let name = rng.weighted(table);
       if (name === last) name = rng.weighted(table);
@@ -183,6 +190,18 @@ function addLogMesh(ob, ol, rng, xc, z, len) {
   for (let i = 0; i < bands; i++) ob.add(SHAPE.cyl12, M(xc + (i - (bands - 1) / 2) * len * 0.3 + rng.range(-0.15, 0.15), r, z, 2 * r + 0.03, 0.16, 2 * r + 0.03, 0, 0, rz), ENV.woodDark);
   ob.add(SHAPE.cone4, M(xc + rng.range(-0.3, 0.3) * len, 2 * r + 0.16, z, 0.4, 0.5, 0.1, 0, rng.f() * 3, 0.5), ENV.leaf[0]);
 }
+// Under water, what lies across the path is a row of napping seals: one to a lane, nose to tail.
+function addSeals(ob, ol, rng, xc, z, len) {
+  const G = seaGeo(), n = Math.max(1, Math.round(len / 1.84)), step = len / n, k = 0.92;
+  let face = rng.chance(0.5) ? 1 : -1;
+  for (let i = 0; i < n; i++) {
+    const x = xc + (i - (n - 1) / 2) * step - face * 0.135 * k; // the model's middle sits a little behind its origin
+    const yaw = (face * Math.PI) / 2 + rng.range(-0.09, 0.09), dz = rng.range(-0.07, 0.07);
+    ob.add(G.sealNap, M(x, 0, z + dz, k, k, k, 0, yaw, 0));
+    ol.add(G.sealNapInk, M(x, 0, z + dz, k, k, k, 0, yaw, 0));
+    if (rng.chance(0.7)) face = -face;
+  }
+}
 function addRubbleMesh(ob, ol, rng, x, z) {
   const rocks = [[-0.42, 0.24, 0.1, 0.86, 0.56, 0.74], [0.36, 0.2, -0.12, 0.74, 0.48, 0.7], [0.02, 0.36, 0.0, 0.6, 0.5, 0.6]];
   for (const [dx, y, dz, sx, sy, sz] of rocks) {
@@ -217,6 +236,11 @@ function addChevron(glow, cx, cy, z, dir) { // ">" for dir=+1, "<" for dir=-1
 function buildSegment(seg, W) {
   const rng = makeRng((W.seed ^ Math.imul(seg.id + 1, 0x9E3779B1)) >>> 0); // scenery dice, separate from layout dice
   const gb = new GeoBuilder(), ob = new GeoBuilder(), ol = new GeoBuilder(false), glow = new GeoBuilder();
+  const sea = seg.sea;
+  const gs = new GeoBuilder();     // sea life: shown only while the water is up
+  ENV = sea ? ENV_SEA : ENV_LAND; // a High Tide stretch is dressed in weed and coral
+  DECOR = sea ? gs : null;
+  if (sea) seaGeo();
   const group = seg.group = new THREE.Group();
   group.position.set(seg.ox, 0, seg.oz); group.rotation.y = seg.yaw;
   const hole = (k, l) => seg.holeCells.has(k * 3 + l);
@@ -238,6 +262,8 @@ function buildSegment(seg, W) {
       if (hole(k, side < 0 ? 0 : 2)) continue;
       gb.add(SHAPE.box, M(side * (FLOOR_HALF + CURB_W / 2), -0.1, z, CURB_W, 0.64, ROW - 0.05), k % 2 ? ENV.curb : ENV.curb2);
       if (rng.chance(0.15)) gb.add(SHAPE.ico, M(side * (FLOOR_HALF + 0.2), 0.27, z + rng.range(-0.8, 0.8), 0.52, 0.34, 0.52, 0, rng.f() * 3, 0), rng.pick(ENV.leaf));
+      else if (sea && rng.chance(0.07)) addStarfish(gb, rng, side * (FLOOR_HALF + CURB_W / 2), 0.22, z + rng.range(-0.8, 0.8), 0.7);
+      else if (sea && rng.chance(0.09)) addCoral(gb, rng, side * (FLOOR_HALF + CURB_W * 0.8), 0.2, z + rng.range(-0.8, 0.8), rng.range(0.36, 0.55)); // a little coral has taken to the kerb
     }
     if (cells === 3 && k % 5 === 2) { // a pier down into the water
       gb.add(SHAPE.box, M(0, -1.45, z, 5.0, 0.6, 2.2), ENV.baseDark);
@@ -276,7 +302,7 @@ function buildSegment(seg, W) {
   for (const o of seg.obstacles) {
     const a = ob.n, b = ol.n, c = glow.n, z = -o.s;
     if (o.type === 'pillar') addTotem(ob, ol, glow, laneX(o.lane), z);
-    else if (o.type === 'log') addLogMesh(ob, ol, rng, (laneX(o.l0) + laneX(o.l1)) / 2, z, (o.l1 - o.l0) * LANE_W + 1.72);
+    else if (o.type === 'log') { (sea ? addSeals : addLogMesh)(ob, ol, rng, (laneX(o.l0) + laneX(o.l1)) / 2, z, (o.l1 - o.l0) * LANE_W + 1.72); if (sea) o.skin = 'seal'; }
     else if (o.type === 'rubble') addRubbleMesh(ob, ol, rng, laneX(o.lane), z);
     else if (o.type === 'beam') addBeamMesh(ob, ol, glow, rng, z);
     o.rOb = [a, ob.n]; o.rOl = [b, ol.n]; o.rGl = [c, glow.n];
@@ -285,17 +311,22 @@ function buildSegment(seg, W) {
   // scenery beside the path
   const d0 = seg.first ? seg.floorStart + 6 : HJ + 13, d1 = seg.len - HJ - 13;
   let sa = d0 + rng.range(10, 30);
-  while (sa < d1) { addArch(gb, glow, rng, -sa); sa += rng.range(40, 66); }
+  const arches = [], posts = []; // remembered so the swimmers can keep clear of them
+  while (sa < d1) { addArch(gb, glow, rng, -sa); arches.push(sa); sa += rng.range(40, 66); }
   for (const side of [-1, 1]) {
     let s = d0 + rng.range(0, 7);
     while (s < d1) {
-      const kind = rng.weighted([[3, 'island'], [2.2, 'column'], [0.8, 'idol'], [1.1, 'tree'], [1.2, 'rocks']]);
+      const kind = rng.weighted(sea ? [[3, 'reef'], [1.9, 'column'], [0.7, 'idol'], [1.5, 'kelp'], [1, 'rocks']] : [[3, 'island'], [2.2, 'column'], [0.8, 'idol'], [1.1, 'tree'], [1.2, 'rocks']]);
       const z = -s;
-      if (kind === 'island') { const R = rng.range(1.8, 3.3); addIsland(gb, rng, side * (HJ + 1.5 + R + rng.range(0, 5)), z, R, rng.range(-1.2, 0.9), true); }
-      else if (kind === 'column') addColumn(gb, rng, side * (HJ + 1.6 + rng.range(0, 6.5)), z, rng.range(1.2, 7.5));
+      if (kind === 'reef') {
+        const R = rng.range(1.8, 3.3), x = side * (HJ + 1.5 + R + rng.range(0, 5)), top = addReef(gb, glow, rng, x, z, R, rng.range(-1.2, 0.9));
+        if (rng.chance(0.3)) gs.add(GEO.seal, M(x - side * R * 0.35, top + 0.06, z - R * 0.2, 0.95, 0.95, 0.95, 0, side * rng.range(0.9, 2.0), 0)); // one hauled out for a rest, watching you go by
+      } else if (kind === 'kelp') addKelpForest(gb, rng, side * (HJ + 5.5 + rng.range(0, 7)), z);
+      else if (kind === 'island') { const R = rng.range(1.8, 3.3); addIsland(gb, rng, side * (HJ + 1.5 + R + rng.range(0, 5)), z, R, rng.range(-1.2, 0.9), true); }
+      else if (kind === 'column') { const x = side * (HJ + 1.6 + rng.range(0, 6.5)), top = rng.range(1.2, 7.5); addColumn(gb, rng, x, z, top); posts.push({ x, s, top }); }
       else if (kind === 'idol') { const x = side * (HJ + 2.3); gb.add(SHAPE.box, M(x, (0.1 + WATER_BASE) / 2, z, 2.1, 0.1 - WATER_BASE, 2.1), ENV.baseDark); addFoam(gb, x, z, 3.4); addIdol(gb, glow, rng, x, z, 0.1, { x: -side * 0.8, z: 0.6 }, 1); }
       else if (kind === 'tree') addBigTree(gb, rng, side * (HJ + 7 + rng.range(0, 5)), z);
-      else addRocks(gb, rng, side * (HJ + 3 + rng.range(0, 8)), z);
+      else { const x = side * (HJ + 3 + rng.range(0, 8)); addRocks(gb, rng, x, z); if (sea) addKelp(gb, rng, x + rng.range(-1, 1), WATER_Y + 0.6, z + rng.range(-1, 1), rng.range(5, 9)); }
       s += rng.range(7, 14);
     }
   }
@@ -306,12 +337,31 @@ function buildSegment(seg, W) {
   seg.olMesh = new THREE.Mesh(ol.build(), MAT.ink);
   seg.glMesh = new THREE.Mesh(glow.build(), MAT.glow);
   group.add(env, seg.obMesh, seg.olMesh, seg.glMesh);
+  if (sea) { seg.seaMesh = new THREE.Mesh(gs.build(), MAT.env); seg.seaMesh.visible = Tide.y > SEA_LIFE_Y; group.add(seg.seaMesh); }
 
   for (const p of seg.pickups) {
     const sp = new THREE.Sprite(W.pickupMat[p.kind]);
     sp.position.set(p.x, p.y, -p.s); sp.scale.set(1.5, 1.5, 1);
     p.sprite = sp; group.add(sp);
   }
+
+  // company for a High Tide stretch: an orca wheeling high over the path, and seals looping round the far columns
+  seg.critters = [];
+  if (sea) {
+    if (d1 - d0 > 34) {
+      let sc = rng.range(d0 + 10, d1 - 10);
+      for (let i = 0; i < 6 && arches.some((a) => Math.abs(a - sc) < 11); i++) sc = rng.range(d0 + 10, d1 - 10); // not through a gateway
+      seg.critters.push(new Swimmer('orca', { cx: 0, cy: rng.range(6.4, 7.3), cz: -sc, rx: rng.range(17, 24), rz: rng.range(4, 6), w: rng.range(0.34, 0.46) * (rng.chance(0.5) ? 1 : -1), ph: rng.f() * TAU, bob: 0.6 }));
+    }
+    const far = posts.filter((p) => Math.abs(p.x) > 7).slice(0, 3);
+    for (const p of far) seg.critters.push(new Swimmer('seal', { cx: p.x, cy: clamp(p.top - 1, 1.6, 4.2), cz: -p.s, rx: 2.5, rz: 2.5, w: rng.range(0.8, 1.15) * (rng.chance(0.5) ? 1 : -1), ph: rng.f() * TAU, bob: 0.45, size: rng.range(0.85, 1.05), roll: rng.chance(0.5) }));
+    for (let i = 0; i < 2; i++) { // and a couple of schools of fish milling about beside it
+      const side = rng.chance(0.5) ? 1 : -1, r = rng.range(2.6, 4.2);
+      seg.critters.push(new Swimmer('fish', { alt: i === 1, cx: side * (HJ + 2.2 + r + rng.range(0, 4)), cy: rng.range(1.8, 4.6), cz: -rng.range(d0, d1), rx: r, rz: r * rng.range(1, 1.8), w: rng.range(0.5, 0.8) * (rng.chance(0.5) ? 1 : -1), ph: rng.f() * TAU, bob: 0.5, size: rng.range(0.9, 1.3) }));
+    }
+    for (const c of seg.critters) { c.update(0); c.obj.visible = Tide.y > SEA_LIFE_Y; group.add(c.obj); }
+  }
+  ENV = ENV_LAND; DECOR = null;
 }
 
 // ── the world keeps the tree of stretches alive around the player ──
@@ -336,7 +386,7 @@ class World {
     if (this.first) this._disposeTree(this.root_seg());
     this.queue.length = 0; this.tutorial = !!tutorial;
     this.seed = seed >>> 0; this.rng = makeRng(this.seed);
-    this.nextPickupAt = 170; this.skyOn = false;
+    this.nextPickupAt = 170; this.skyOn = false; this.wet = false;
     this.first = this.cur = this._make(null, null);
     this.prev = null;
     this.ensureAhead();
@@ -392,6 +442,12 @@ class World {
     this.ensureAhead();
     return next;
   }
+  showSeaLife(seg, on, n) {
+    if (!seg || seg.dead || n > 2) return;
+    if (seg.seaMesh) seg.seaMesh.visible = on;
+    if (seg.critters) for (const c of seg.critters) c.obj.visible = on;
+    this.showSeaLife(seg.kids.L, on, n + 1); this.showSeaLife(seg.kids.R, on, n + 1);
+  }
   // A trail of bananas in the air for the rocket to fly through.
   addSky(seg, from) {
     if (!seg || seg.dead || seg.sky) return;
@@ -424,7 +480,8 @@ class World {
     // bananas: one instanced draw for every banana in view
     const arr = this.nanas.instanceMatrix.array, cap = this.cap;
     let n = 0;
-    const segs = [this.prev, this.cur, this.cur.kids.L, this.cur.kids.R];
+    const segs = [this.prev, this.cur, this.cur.kids.L, this.cur.kids.R], wet = Tide.y > SEA_LIFE_Y;
+    if (wet !== this.wet) { this.wet = wet; this.showSeaLife(this.prev, wet, 0); this.showSeaLife(this.cur, wet, 0); } // coral and company appear as the water reaches them
     for (const seg of segs) {
       if (!seg || seg.dead) continue;
       for (const b of seg.bananas) {
@@ -438,6 +495,7 @@ class World {
         arr[o + 12] = x; arr[o + 13] = y; arr[o + 14] = z; arr[o + 15] = 1;
         n++;
       }
+      if (seg.critters) for (const c of seg.critters) c.update(t);
       for (const p of seg.pickups) if (p.sprite && !p.got) { p.sprite.position.y = p.y + Math.sin(t * 3.2 + p.s) * 0.14; const k = 1.5 + Math.sin(t * 6 + p.s) * 0.07; p.sprite.scale.set(k, k, 1); }
     }
     this.nanas.count = n; this.nanaInk.count = n;

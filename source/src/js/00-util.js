@@ -47,8 +47,21 @@ const JUMP_V = 11.4;
 const AIR_T = (2 * JUMP_V) / GRAVITY;            // ~0.67 s in the air
 const JUMP_H = (JUMP_V * JUMP_V) / (2 * GRAVITY); // ~1.9 m
 const SLIDE_T = 0.72;
-const SPEED_MIN = 11, SPEED_MAX = 23;
-const speedAt = (d) => SPEED_MIN + (SPEED_MAX - SPEED_MIN) * (1 - Math.exp(-Math.max(0, d) / 1900));
+const SPEED_MIN = 11, SPEED_MAX = 29;
+
+// Levels. A level is a few stretches of track, and you move up one at a corner. Each level is faster and more
+// tightly packed than the one before by a fixed ratio, so the difficulty compounds instead of creeping up.
+const LEVEL_STRETCHES = 4;
+const SPEED_GROW = 1.1;       // +10 % running speed per level, up to SPEED_MAX
+const GAP_SHRINK = 0.93;      // -7 % clear running between obstacles per level …
+const GAP_MIN = 0.52;         // … down to about half a second
+const levelOf = (depth) => 1 + Math.floor(depth / LEVEL_STRETCHES);
+const levelSpeed = (L) => Math.min(SPEED_MAX, SPEED_MIN * Math.pow(SPEED_GROW, L - 1));
+const levelGap = (L) => Math.max(GAP_MIN, 1.3 * Math.pow(GAP_SHRINK, L - 1));
+const isSea = (L) => L % 3 === 2;                              // High Tide: levels 2, 5, 8, …
+const landIndex = (L) => L - 1 - Math.floor((L + 1) / 3);      // how many dry levels came before this one
+const LAND_NAMES = ['Jungle Ruins', 'Sunset Ruins', 'Moonlit Ruins', 'Dawn Ruins'];
+const levelName = (L) => (isSea(L) ? 'High Tide' : LAND_NAMES[landIndex(L) % 4]);
 
 // Headings: 0 = north (-Z), 1 = east (+X), 3 = west (-X). The path never heads south,
 // which guarantees it can never cross itself.

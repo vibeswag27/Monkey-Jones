@@ -414,3 +414,123 @@ class Boulder {
   }
   roll(dist) { this.ball.rotation.x -= dist / this.R; }
 }
+
+// ───────────────────────── sea creatures, modelled on the plush seal and the plush orca ─────────────────────────
+const SEAL = { body: 0xf3b9a2, flip: 0xe9a68d, muzzle: 0xb36b36, dark: 0x2a1a14, dot: 0x7a4322, spot: 0xe8974e };
+const ORCA = { black: 0x2c3142, white: 0xf8f4ea, pupil: 0x15171d };
+MAT.inkDark = new THREE.MeshBasicMaterial({ color: 0x12141b, side: THREE.BackSide });
+
+// A seal on its belly, nose towards -Z, about 2.1 m from nose to flipper tips and 0.8 m tall. asleep: eyes shut.
+function sealGeo(asleep) {
+  const gb = new GeoBuilder(), c = SEAL;
+  gb.add(SHAPE.sphHi, M(0, 0.4, -0.02, 0.84, 0.8, 1.5), c.body);                                             // a loaf of a body
+  gb.add(taperTube([v3(0, 0.35, 0.3), v3(0, 0.28, 0.62), v3(0, 0.2, 0.92)], 8, 0.3, 0.13, 10), IDENT, c.body); // tapering to the tail
+  gb.add(SHAPE.sphHi, M(0, 0.42, -0.5, 0.88, 0.82, 0.82), c.body);                                           // domed head, as wide as the body
+  gb.add(SHAPE.sph, M(0, 0.29, -0.845, 0.46, 0.32, 0.24), c.muzzle);                                         // caramel muzzle
+  gb.add(SHAPE.cone4, M(0, 0.385, -0.955, 0.18, 0.12, 0.07, Math.PI, 0, 0), c.dark);                         // nose: a black triangle, point down
+  gb.add(SHAPE.box, M(0, 0.265, -0.96, 0.02, 0.13, 0.02), c.dark);                                           // the seam below it
+  for (const sx of [-1, 1]) {
+    for (const [dx, dy] of [[0.1, 0.275], [0.155, 0.315], [0.15, 0.235]]) gb.add(SHAPE.sphLo, M(sx * dx, dy, -0.945 + dx * 0.22, 0.024, 0.024, 0.02), c.dot); // whisker dots
+    if (asleep) for (const k of [-1, 1]) gb.add(SHAPE.box, M(sx * 0.285 + k * 0.034 * 0.76, 0.565, -0.762 + sx * k * 0.034 * 0.64, 0.09, 0.03, 0.03, 0, -sx * 0.7, k * 0.5), c.dark);
+    else gb.add(SHAPE.sph, M(sx * 0.285, 0.57, -0.765, 0.086, 0.086, 0.06, 0, -sx * 0.7, 0), c.dark);             // small wide-set eyes
+    gb.add(SHAPE.sph, M(sx * 0.56, 0.065, -0.06, 0.62, 0.11, 0.36, 0, sx * -0.5, sx * -0.06), c.flip);        // front flippers, flat on the ground and swept back
+    for (const k of [-1, 0, 1]) gb.add(SHAPE.box, M(sx * 0.62, 0.118, -0.02 + k * 0.085, 0.34, 0.014, 0.022, 0, sx * -(0.5 + k * 0.14), 0), c.muzzle);
+    gb.add(SHAPE.sph, M(sx * 0.13, 0.1, 1.02, 0.22, 0.1, 0.44, 0, sx * 0.34, 0), c.flip);                     // tail flippers
+  }
+  for (const [x, y, z, r] of [[0.13, 0.786, 0.14, -0.3], [-0.1, 0.765, 0.31, 0.25], [0.07, 0.725, 0.44, -0.15]]) gb.add(SHAPE.sph, M(x, y, z, 0.15, 0.03, 0.11, 0.25, 0.4, r), c.spot); // spots on the back
+  return gb.build();
+}
+
+// The orca, nose towards -Z, about 4 m long. part: 'body', 'tail' (the piece that beats), or 'all' in one for the ones that only glide by.
+function orcaGeo(part) {
+  const gb = new GeoBuilder(), c = ORCA;
+  if (part !== 'tail') {
+    gb.add(SHAPE.sphHi, M(0, 0, -0.25, 1.75, 1.5, 3.1), c.black);                                             // one big blunt lozenge
+    gb.add(SHAPE.sphHi, M(0, -0.2, -0.55, 1.62, 1.22, 2.55), c.white);                                        // white chin and belly showing through underneath
+    gb.add(taperTube([v3(0, 0.02, 0.7), v3(0, 0.05, 1.0), v3(0, 0.07, 1.3)], 6, 0.6, 0.36, 12), IDENT, c.black);
+    gb.add(SHAPE.sph, M(0, 0.07, 1.3, 0.72, 0.72, 0.5), c.black);
+    gb.add(SHAPE.sph, M(0, 0.74, 0.12, 0.17, 1.0, 0.66, 0.5, 0, 0), c.black);                                  // rounded fin, leaning back
+    for (const sx of [-1, 1]) {
+      gb.add(SHAPE.sph, M(sx * 0.726, 0.27, -0.95, 0.1, 0.5, 0.7, 0, sx * 0.3, sx * 0.46), c.white);            // the big white eye patch …
+      gb.add(SHAPE.sph, M(sx * 0.772, 0.29, -0.98, 0.06, 0.09, 0.09, 0, sx * 0.3, sx * 0.46), c.pupil);        // … with a dot of an eye in the middle
+      gb.add(SHAPE.sph, M(sx * 0.845, -0.1, 0.1, 0.09, 0.74, 0.42, 0.5, 0, sx * -0.12), c.white);              // white flash on the flank
+      gb.add(SHAPE.sph, M(sx * 0.98, -0.52, -0.5, 0.95, 0.15, 0.52, 0, sx * -0.45, sx * -0.5), c.black);       // paddle flippers, swept back
+    }
+  }
+  if (part !== 'body') {
+    const z0 = part === 'tail' ? -1.3 : 0; // the tail piece is built around its hinge
+    gb.add(taperTube([v3(0, 0.07, 1.3 + z0), v3(0, 0.09, 1.6 + z0), v3(0, 0.1, 1.9 + z0)], 6, 0.36, 0.16, 10), IDENT, c.black);
+    gb.add(SHAPE.sph, M(0, 0.1, 1.92 + z0, 0.34, 0.2, 0.34), c.black);
+    for (const sx of [-1, 1]) gb.add(SHAPE.sph, M(sx * 0.4, 0.1, 2.08 + z0, 0.9, 0.13, 0.5, 0, sx * -0.45, 0), c.black); // flukes
+  }
+  return gb.build();
+}
+// A loose school of little fish, all heading towards -Z. One mesh, so a whole school costs a single draw.
+function fishGeo(cols) {
+  const gb = new GeoBuilder(), rng = makeRng(cols[0]);
+  for (let i = 0; i < 10; i++) {
+    const x = rng.range(-1.2, 1.2), y = rng.range(-0.75, 0.75), z = rng.range(-1.5, 1.5), s = rng.range(0.8, 1.3), c = cols[i % cols.length];
+    gb.add(SHAPE.sphLo, M(x, y, z, 0.16 * s, 0.3 * s, 0.52 * s), c);
+    gb.add(SHAPE.cone4, M(x, y, z + 0.37 * s, 0.05 * s, 0.26 * s, 0.26 * s, -Math.PI / 2, 0, 0), shade(c, 0.78)); // tail fin
+    gb.add(SHAPE.box, M(x, y, z - 0.05 * s, 0.17 * s, 0.3 * s, 0.07 * s), 0xffffff);                              // one white band
+    for (const sx of [-1, 1]) gb.add(SHAPE.sphLo, M(x + sx * 0.065 * s, y + 0.05 * s, z - 0.17 * s, 0.04 * s, 0.05 * s, 0.05 * s), 0x1f1410);
+  }
+  return gb.build();
+}
+// Ink outline geometry that a GeoBuilder can also merge (it needs normals).
+function inkOf(geo, t) { const g = outlineOf(geo, t); g.setAttribute('normal', geo.attributes.normal); return g; }
+function seaGeo() { // built the first time the tide comes in
+  if (!GEO.sealNap) {
+    GEO.sealNap = sealGeo(true); GEO.sealNapInk = inkOf(GEO.sealNap, 0.03);
+    GEO.seal = sealGeo(false); GEO.sealInk = inkOf(GEO.seal, 0.03);
+    GEO.orca = orcaGeo('all'); GEO.orcaInk = inkOf(GEO.orca, 0.04);
+    GEO.fishA = fishGeo([0xff8a3c, 0xffb347, 0xff6f61]); GEO.fishB = fishGeo([0xffe066, 0x5fd4f2, 0x7ae0c4]);
+  }
+  return GEO;
+}
+const sharedMesh = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.userData.sharedGeo = true; return m; };
+
+// The orca that takes over from the boulder under water: it swims after you, and if it catches you, you get booped.
+class Orca {
+  constructor() {
+    this.group = new THREE.Group(); this.group.visible = false;
+    const swim = this.swim = new THREE.Group(); swim.position.set(0, 1.0, 0.3); this.group.add(swim);
+    const body = orcaGeo('body'), tail = orcaGeo('tail');
+    const b = new THREE.Mesh(body, MAT.char); b.add(new THREE.Mesh(outlineOf(body, 0.04), MAT.inkDark)); swim.add(b);
+    this.tail = new THREE.Group(); this.tail.position.set(0, 0, 1.3); swim.add(this.tail);
+    const tm = new THREE.Mesh(tail, MAT.char); tm.add(new THREE.Mesh(outlineOf(tail, 0.04), MAT.inkDark)); this.tail.add(tm);
+    this.shadow = sharedMesh(GEO.disc, MAT.shadow);
+    this.shadow.scale.set(2.4, 1, 4.2); this.shadow.position.set(0, 0.03, 0.3); this.shadow.renderOrder = 2;
+    this.group.add(this.shadow);
+    this.ph = 0; this.wig = 0;
+  }
+  // v: how fast it is moving (m/s). glee: 0…1 after a boop, when it wriggles with delight.
+  update(dt, t, v, glee) {
+    this.ph += dt * (4.2 + Math.min(v, 30) * 0.22);
+    const s = Math.sin(this.ph), g = glee || 0;
+    this.tail.rotation.x = s * 0.42;
+    this.swim.rotation.x = Math.sin(this.ph - 1.1) * 0.07 - g * 0.25;
+    this.swim.rotation.z = Math.sin(t * 1.3) * 0.05 + g * Math.sin(t * 13) * 0.22;
+    this.swim.position.y = 1.0 + Math.sin(t * 1.9) * 0.1 + g * 0.5;
+  }
+}
+
+// Seals, orcas and schools of fish that only swim about for the look of the thing. They belong to a stretch of track and loop for ever.
+class Swimmer {
+  constructor(kind, o) {
+    const G = seaGeo(), orca = kind === 'orca';
+    if (kind === 'fish') this.obj = sharedMesh(o.alt ? G.fishB : G.fishA, MAT.char); // too small to need an outline
+    else {
+      this.obj = sharedMesh(orca ? G.orca : G.seal, MAT.char);
+      this.obj.add(sharedMesh(orca ? G.orcaInk : G.sealInk, orca ? MAT.inkDark : MAT.ink));
+    }
+    Object.assign(this, { kind, cx: 0, cy: 3, cz: 0, rx: 3, rz: 3, w: 0.8, ph: 0, bob: 0.5, size: 1, roll: 0 }, o);
+    this.obj.scale.setScalar(this.size);
+  }
+  update(t) {
+    const a = t * this.w + this.ph, c = Math.cos(a), s = Math.sin(a), o = this.obj;
+    o.position.set(this.cx + c * this.rx, this.cy + Math.sin(a * 1.7 + this.ph) * this.bob, this.cz + s * this.rz);
+    const vx = -s * this.rx * this.w, vz = c * this.rz * this.w;                 // heading follows the way it is going
+    o.rotation.set(Math.cos(a * 1.7 + this.ph) * 0.16, Math.atan2(-vx, -vz), Math.sin(a * 2.3) * 0.14 + (this.roll ? Math.max(0, Math.sin(a * 0.5)) ** 8 * TAU : 0), 'YXZ');
+  }
+}

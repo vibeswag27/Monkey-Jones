@@ -31,7 +31,7 @@ const Bot = {
     const mine = this.hazard(P.lane, s - 0.6, s + far);
     if (mine && mine.kind === 'block') {
       const free = (l) => { if (l < -1 || l > 1) return false; const h = this.hazard(l, s - 1.3, s + far); return !(h && h.kind === 'block'); };
-      const clearNow = (l) => { if (l < -1 || l > 1) return false; const h = this.hazard(l, s - 1.3, s + 1.6); return !(h && h.kind === 'block'); };
+      const clearNow = (l) => { if (l < -1 || l > 1) return false; const h = this.hazard(l, s - 1.3, s + v * 0.11 + 1.3); return !(h && h.kind === 'block'); }; // crossing a lane takes about a tenth of a second
       let go = 0;
       if (free(P.lane - 1) && free(P.lane + 1)) go = Math.random() < 0.5 ? -1 : 1;
       else if (free(P.lane - 1)) go = -1;
@@ -62,6 +62,7 @@ function boot(hot) {
   Save.load(hot);
   Roster.use(Save.data.char);
   boulder = new Boulder(); scene.add(boulder.group);
+  orca = new Orca(); scene.add(orca.group);
   fx = new FX(scene);
 
   function resize() {
@@ -110,7 +111,7 @@ function boot(hot) {
   requestAnimationFrame(frame);
 
   // testing hooks
-  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, get world() { return world; }, get monkey() { return monkey; }, get camera() { return camera; }, render() { renderer.render(scene, camera); } };
+  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); } };
 }
 
 try {

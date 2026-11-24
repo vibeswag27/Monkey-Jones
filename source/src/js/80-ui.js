@@ -3,13 +3,14 @@ const UI = (() => {
   const $ = (id) => document.getElementById(id);
   const stage = $('stage');
   const el = {};
-  for (const id of ['score', 'mult', 'bananas', 'nanaChip', 'powers', 'hint', 'hintIcon', 'hintText', 'toast', 'best', 'wallet', 'how', 'countNum', 'wipe', 'danger',
-    'overTitle', 'overSub', 'newBest', 'oScore', 'oDist', 'oNanas', 'oBest', 'btnRun', 'btnPause', 'btnResume', 'btnRestart', 'btnHome', 'btnHome2', 'btnAgain',
+  for (const id of ['score', 'mult', 'level', 'bananas', 'nanaChip', 'powers', 'hint', 'hintIcon', 'hintText', 'toast', 'levelUp', 'levelNum', 'levelName', 'best', 'wallet', 'how', 'countNum', 'wipe', 'danger', 'sea', 'plunge',
+    'overTitle', 'overSub', 'newBest', 'oScore', 'oDist', 'oLevel', 'oNanas', 'oBest', 'btnRun', 'btnPause', 'btnResume', 'btnRestart', 'btnHome', 'btnHome2', 'btnAgain',
     'btnMusic', 'btnSfx', 'btnMusic2', 'btnSfx2', 'fatalMsg', 'btnShop', 'btnShop2', 'btnShopDone', 'shopList', 'shopWallet',
     'btnChars', 'btnPrev', 'btnNext', 'btnCharGo', 'btnCharDone', 'charName', 'charBlurb', 'charDots', 'charWallet', 'charNeed']) el[id] = $(id);
   const NANA = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFD23F" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/></svg>';
   const touch = !!((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window);
-  const last = { score: -1, nanas: -1, mult: -1, danger: false, popAt: 0 };
+  const last = { score: -1, nanas: -1, mult: -1, level: -1, danger: false, sea: false, popAt: 0 };
+  const replay = (node) => { node.classList.remove('on'); void node.offsetWidth; node.classList.add('on'); }; // restart a CSS animation
   const setText = (node, txt) => { node.textContent = txt; if (node.dataset.t !== undefined) node.dataset.t = txt; };
 
   const ARROW = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 27V7M7 15l9-9 9 9" fill="none" stroke="#3A1E14" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -41,6 +42,8 @@ const UI = (() => {
     bonk: ['Bonk!', (n) => n + ' ran face-first into the ruins.'],
     fall: ['Splash!', (n) => n + ' went for a swim.'],
     flat: ['Flattened!', (n) => 'The boulder caught up with ' + n + '.'],
+    sink: ['Glub!', (n) => n + ' sank to the sea bed.'],
+    boop: ['Booped!', (n) => 'The orca caught up with ' + n + '.'],
   };
   let browseAt = 0;
 
@@ -64,6 +67,7 @@ const UI = (() => {
       if (force || run.nanas !== last.nanas) { last.nanas = run.nanas; el.bananas.textContent = fmt(run.nanas); }
       const m = run.mult * (run.dbl > 0 ? 2 : 1);
       if (force || m !== last.mult) { last.mult = m; el.mult.textContent = '×' + m; }
+      if (force || run.level !== last.level) { last.level = run.level; el.level.textContent = 'Level ' + run.level; }
       const mx = run.max;
       setPower('magnet', run.magnet / mx.magnet); setPower('double', run.dbl / mx.double); setPower('shield', run.shield ? run.shieldT / mx.shield : 0);
       setPower('springs', run.springs / mx.springs); setPower('rocket', Player.flying ? Math.max(0.03, run.rocket / mx.rocket) : 0);
@@ -81,15 +85,20 @@ const UI = (() => {
       el.hintText.textContent = h.text[touch ? 0 : 1];
       el.hint.classList.add('on');
     },
-    toast(text) {
-      setText(el.toast, text);
-      el.toast.classList.remove('on'); void el.toast.offsetWidth; el.toast.classList.add('on');
+    toast(text) { setText(el.toast, text); replay(el.toast); },
+    // A new level: its number, and what kind of place it is.
+    levelUp(n) {
+      setText(el.levelNum, 'Level ' + n); el.levelName.textContent = levelName(n);
+      el.levelUp.classList.toggle('sea', isSea(n));
+      replay(el.levelUp);
     },
+    sea(on) { if (on !== last.sea) { last.sea = on; el.sea.classList.toggle('on', on); } }, // the edges of the screen darken under water
+    plunge(bright) { el.plunge.style.filter = bright < 0.95 ? 'brightness(' + (0.25 + 0.75 * bright).toFixed(2) + ')' : ''; replay(el.plunge); }, // a wash of foam as the surface passes the camera (dimmer at night)
     showOver(type, score, run, best) {
       const o = OVER[type] || OVER.bonk;
       setText(el.overTitle, o[0]); el.overSub.textContent = o[1](monkey.spec.name);
       el.newBest.classList.toggle('on', !!best);
-      el.oScore.textContent = fmt(score); el.oDist.textContent = fmt(run.dist) + ' m'; el.oNanas.textContent = fmt(run.nanas); el.oBest.textContent = fmt(Save.data.best);
+      el.oScore.textContent = fmt(score); el.oDist.textContent = fmt(run.dist) + ' m'; el.oLevel.textContent = run.level; el.oNanas.textContent = fmt(run.nanas); el.oBest.textContent = fmt(Save.data.best);
       api.setState('over');
       setTimeout(() => { if (stage.dataset.state === 'over') { try { el.btnAgain.focus({ preventScroll: true }); } catch (e) { /* ignore */ } } }, 300);
     },

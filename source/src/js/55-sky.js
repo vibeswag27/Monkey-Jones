@@ -1,12 +1,15 @@
 // ───────────────────────── sky, light, water and far scenery ─────────────────────────
-// The time of day drifts as you run: bright morning → sunset → moonlit night → dawn → …
+// The time of day moves on as you climb the levels: bright morning → sunset → moonlit night → dawn → …
+// `sea` is how bright the water is at that hour, for when the tide comes in.
 const BIOMES = [
-  { top: 0x2f9bf0, hor: 0xbfeeff, fog: 0xc8eef9, water: 0x21bfc4, sun: 0xfff6dc, sunI: 0.56, sky: 0xf2fbff, gnd: 0xa9c095, hemiI: 0.5, cloud: 0xffffff, mtn: 0x9fd6dc, disc: 0xfff4c2, star: 0 },
-  { top: 0x6a4fc4, hor: 0xffb37a, fog: 0xffc49a, water: 0x6f74d4, sun: 0xffc08a, sunI: 0.56, sky: 0xffe0cc, gnd: 0x9a7f9c, hemiI: 0.5, cloud: 0xffd2b4, mtn: 0xd697a4, disc: 0xffd27a, star: 0.12 },
-  { top: 0x0a1040, hor: 0x2c4a9c, fog: 0x26418c, water: 0x15307f, sun: 0xb4ccff, sunI: 0.46, sky: 0x86a6f2, gnd: 0x3a4c86, hemiI: 0.58, cloud: 0x5a74c8, mtn: 0x1d2f73, disc: 0xf2f6ff, star: 1 },
-  { top: 0x5fa0f0, hor: 0xffd6e6, fog: 0xf9dce6, water: 0x4cc4d0, sun: 0xffe6cc, sunI: 0.56, sky: 0xfff2f6, gnd: 0xa8b89c, hemiI: 0.5, cloud: 0xffe8ee, mtn: 0xb8a8d6, disc: 0xffe9b0, star: 0 },
+  { top: 0x2f9bf0, hor: 0xbfeeff, fog: 0xc8eef9, water: 0x21bfc4, sun: 0xfff6dc, sunI: 0.56, sky: 0xf2fbff, gnd: 0xa9c095, hemiI: 0.5, cloud: 0xffffff, mtn: 0x9fd6dc, disc: 0xfff4c2, star: 0, sea: 1 },
+  { top: 0x6a4fc4, hor: 0xffb37a, fog: 0xffc49a, water: 0x6f74d4, sun: 0xffc08a, sunI: 0.56, sky: 0xffe0cc, gnd: 0x9a7f9c, hemiI: 0.5, cloud: 0xffd2b4, mtn: 0xd697a4, disc: 0xffd27a, star: 0.12, sea: 0.88 },
+  { top: 0x0a1040, hor: 0x2c4a9c, fog: 0x26418c, water: 0x15307f, sun: 0xb4ccff, sunI: 0.46, sky: 0x86a6f2, gnd: 0x3a4c86, hemiI: 0.58, cloud: 0x5a74c8, mtn: 0x1d2f73, disc: 0xf2f6ff, star: 1, sea: 0.6 },
+  { top: 0x5fa0f0, hor: 0xffd6e6, fog: 0xf9dce6, water: 0x4cc4d0, sun: 0xffe6cc, sunI: 0.56, sky: 0xfff2f6, gnd: 0xa8b89c, hemiI: 0.5, cloud: 0xffe8ee, mtn: 0xb8a8d6, disc: 0xffe9b0, star: 0, sea: 0.94 },
 ];
-const BIOME_SPAN = 700;
+// What everything looks like once the tide has closed over your head.
+const SEA = { top: 0x9af0e4, hor: 0x3fb0c8, fog: 0x2e9ab6, bed: 0xd8c99a, sun: 0xf2fdff, sunI: 0.52, sky: 0xe4f9ff, gnd: 0x8ac8d2, hemiI: 0.56, surf: 0x66dbe0 }; // the light stays near white so the cast keep their own colours
+const TIDE_TOP = 15; // how far above the path the water stands at high tide
 
 class Sky {
   constructor(scene) {
@@ -71,9 +74,15 @@ class Sky {
     this.cloudMat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false });
     this.clouds = new THREE.Mesh(cg, this.cloudMat); this.far.add(this.clouds);
 
+    // the lagoon far below the path; at high tide the same plane reads as the sandy sea bed
     this.waterMat = new THREE.MeshBasicMaterial({ color: 0x21bfc4 });
     this.water = new THREE.Mesh(new THREE.PlaneGeometry(2600, 2600).rotateX(-Math.PI / 2), this.waterMat);
     this.water.position.y = WATER_Y; scene.add(this.water);
+
+    // the tide's surface: a sheet of water that climbs over the path and then hangs overhead
+    this.surfMat = new THREE.MeshBasicMaterial({ color: SEA.surf, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
+    this.surf = new THREE.Mesh(this.water.geometry, this.surfMat);
+    this.surf.renderOrder = 3; this.surf.visible = false; scene.add(this.surf);
 
     // streaks of light on the water: they give the height and the speed something to slide against
     this.nGl = 80; this.glSpan = 190;
@@ -82,40 +91,67 @@ class Sky {
     this.gl = [];
     for (let i = 0; i < this.nGl; i++) this.gl.push({ x: rng.range(0, this.glSpan), z: rng.range(0, this.glSpan), len: rng.range(2, 6), w: rng.range(0.16, 0.3), ph: rng.range(0, TAU), ry: rng.range(-0.3, 0.3) });
 
-    this.cur = {}; this._a = new THREE.Color(); this._b = new THREE.Color();
-    this.setBiome(0);
+    // shafts of light slanting down through the water (only there while you are under it)
+    const sc = document.createElement('canvas'); sc.width = 32; sc.height = 128;
+    const s2 = sc.getContext('2d'), gv = s2.createLinearGradient(0, 0, 0, 128), gh = s2.createLinearGradient(0, 0, 32, 0);
+    gv.addColorStop(0, 'rgba(255,255,255,1)'); gv.addColorStop(0.55, 'rgba(255,255,255,0.45)'); gv.addColorStop(1, 'rgba(255,255,255,0)');
+    s2.fillStyle = gv; s2.fillRect(0, 0, 32, 128);
+    gh.addColorStop(0, 'rgba(0,0,0,0)'); gh.addColorStop(0.5, 'rgba(0,0,0,1)'); gh.addColorStop(1, 'rgba(0,0,0,0)');
+    s2.globalCompositeOperation = 'destination-in'; s2.fillStyle = gh; s2.fillRect(0, 0, 32, 128);
+    this.nSh = 10; this.shSpan = 76;
+    this.shaftMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), color: 0xd2fdff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    this.shafts = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).translate(0, -0.5, 0), this.shaftMat, this.nSh);
+    this.shafts.frustumCulled = false; this.shafts.renderOrder = 4; this.shafts.visible = false; scene.add(this.shafts);
+    this.sh = [];
+    for (let i = 0; i < this.nSh; i++) this.sh.push({ x: rng.range(0, this.shSpan), z: rng.range(0, this.shSpan), w: rng.range(2.4, 5.2), ph: rng.range(0, TAU), tilt: rng.range(0.14, 0.34) });
+
+    this._a = new THREE.Color(); this._b = new THREE.Color(); this._s = new THREE.Color();
+    this.sub = 0; this.sunBase = 0.56;
+    this.setLook(0, 0);
   }
 
   _mix(key, a, b, t) { return this._a.setHex(a[key]).lerp(this._b.setHex(b[key]), t); }
-  setBiome(dist) {
-    const p = Math.max(0, dist) / BIOME_SPAN, i = Math.floor(p) % 4, f = p - Math.floor(p);
-    const a = BIOMES[i], b = BIOMES[(i + 1) % 4], t = smooth((f - 0.6) / 0.4);
-    this.domeMat.uniforms.uTop.value.copy(this._mix('top', a, b, t));
-    this.domeMat.uniforms.uHor.value.copy(this._mix('hor', a, b, t));
-    this.domeMat.uniforms.uFog.value.copy(this._mix('fog', a, b, t));
+  // p: the time of day (0 morning, 1 sunset, 2 night, 3 dawn; in between they blend). sub: 0 above the water … 1 under it.
+  setLook(p, sub) {
+    const q = ((p % 4) + 4) % 4, i = Math.floor(q) % 4, t = smooth(q - Math.floor(q)), a = BIOMES[i], b = BIOMES[(i + 1) % 4];
+    const u = clamp(sub || 0, 0, 1), dim = lerp(a.sea, b.sea, t);
+    const mix = (key, sea) => { const c = this._mix(key, a, b, t); return u > 0 ? c.lerp(this._s.setHex(sea).multiplyScalar(dim), u) : c; };
+    this.domeMat.uniforms.uTop.value.copy(mix('top', SEA.top));
+    this.domeMat.uniforms.uHor.value.copy(mix('hor', SEA.hor));
+    this.domeMat.uniforms.uFog.value.copy(mix('fog', SEA.fog));
     this.scene.fog.color.copy(this._a);
-    this.waterMat.color.copy(this._mix('water', a, b, t));
-    this.sun.color.copy(this._mix('sun', a, b, t)); this.sun.intensity = lerp(a.sunI, b.sunI, t);
-    this.hemi.color.copy(this._mix('sky', a, b, t)); this.hemi.groundColor.copy(this._mix('gnd', a, b, t)); this.hemi.intensity = lerp(a.hemiI, b.hemiI, t);
+    this.scene.fog.near = lerp(42, 9, u); this.scene.fog.far = lerp(168, 94, u);
+    this.waterMat.color.copy(mix('water', SEA.bed));
+    this.sun.color.copy(mix('sun', SEA.sun)); this.sunBase = lerp(lerp(a.sunI, b.sunI, t), SEA.sunI, u); this.sun.intensity = this.sunBase;
+    this.hemi.color.copy(mix('sky', SEA.sky)); this.hemi.groundColor.copy(mix('gnd', SEA.gnd)); this.hemi.intensity = lerp(lerp(a.hemiI, b.hemiI, t), SEA.hemiI, u);
     this.cloudMat.color.copy(this._mix('cloud', a, b, t));
     this.mtnMat.color.copy(this._mix('mtn', a, b, t));
     this.disc.material.color.copy(this._mix('disc', a, b, t));
-    this.stars.material.opacity = lerp(a.star, b.star, t);
+    this.stars.material.opacity = lerp(a.star, b.star, t) * (1 - u);
     this.stars.visible = this.stars.material.opacity > 0.01;
+    this.far.visible = this.disc.visible = u < 0.5; // hills, clouds and the sun stay above the surface
+    this.surfMat.color.setHex(SEA.surf).multiplyScalar(dim * dim); // the sheet of water is as bright as the hour allows
+    this.dim = dim;
+    this.shaftMat.opacity = 0.2 * u * dim;
+    this.sub = u;
   }
 
-  update(dt, t, cam) {
-    const p = cam.position;
+  update(dt, t, cam, tideY) {
+    const p = cam.position, u = this.sub;
     this.dome.position.copy(p); this.stars.position.copy(p);
     this.far.position.set(p.x, 0, p.z);
     this.clouds.rotation.y += dt * 0.004;
     this.water.position.set(p.x, WATER_Y, p.z);
+    const risen = tideY > WATER_Y + 0.05;
+    this.surf.visible = risen;
+    if (risen) { this.surf.position.set(p.x, tideY, p.z); this.surfMat.opacity = lerp(0.6, 0.4, u); }
     this.disc.position.copy(p).addScaledVector(this.sunDir, 800);
     // key light always comes from over the camera's left shoulder, so whatever you look at reads clearly
     cam.getWorldDirection(_v); _v.y = 0; _v.normalize();
     this.sun.target.position.copy(p).addScaledVector(_v, 8);
     this.sun.position.set(p.x - _v.x * 6 + _v.z * 4.5, p.y + 9, p.z - _v.z * 6 - _v.x * 4.5);
-    // water glints wrap around the camera
+    if (u > 0) this.sun.intensity = this.sunBase * (1 + 0.06 * u * Math.sin(t * 2.7)); // light wobbling down through the swell
+    // water glints wrap around the camera (on the sea bed they pass for ripples of light)
     const span = this.glSpan, half = span / 2, arr = this.glints.instanceMatrix.array;
     for (let i = 0; i < this.nGl; i++) {
       const g = this.gl[i];
@@ -127,5 +163,18 @@ class Sky {
       arr[o + 12] = x; arr[o + 13] = WATER_Y + 0.04; arr[o + 14] = z; arr[o + 15] = 1;
     }
     this.glints.instanceMatrix.needsUpdate = true;
+    // light shafts hang from the surface and turn to face the camera
+    const on = u > 0.02 && risen;
+    this.shafts.visible = on;
+    if (on) {
+      const sp2 = this.shSpan, h2 = sp2 / 2, h = Math.max(4, tideY + 3);
+      for (let i = 0; i < this.nSh; i++) {
+        const s = this.sh[i];
+        const x = p.x + ((((s.x - p.x) % sp2) + sp2) % sp2) - h2, z = p.z + ((((s.z - p.z) % sp2) + sp2) % sp2) - h2;
+        const w = s.w * (0.75 + 0.25 * Math.sin(t * 0.7 + s.ph));
+        this.shafts.setMatrixAt(i, M(x, tideY, z, w, h, 1, 0, Math.atan2(p.x - x, p.z - z), s.tilt));
+      }
+      this.shafts.instanceMatrix.needsUpdate = true;
+    }
   }
 }

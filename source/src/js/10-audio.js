@@ -1,7 +1,8 @@
 // ───────────────────────── sound: all synthesized, nothing downloaded ─────────────────────────
 const Sound = (() => {
-  let ctx = null, master, sfxBus, musBus, musFilter, noiseBuf, rumbleGain = null;
-  let sfxOn = true, musicOn = true, muffled = false, hushed = false, rebuilds = 0, rumbleV = -1;
+  const AIR_HZ = 18000, SEA_HZ = 1700;
+  let ctx = null, master, sfxBus, musBus, musFilter, seaFilter, noiseBuf, rumbleGain = null;
+  let sfxOn = true, musicOn = true, muffled = false, hushed = false, undersea = false, rebuilds = 0, rumbleV = -1;
   // Glide a volume to a new level. Old automation is cleared first: left to pile up (one event per frame),
   // it slowly chokes the audio engine on iPhones until the sound cuts out.
   function glide(param, v, tc) {
@@ -19,11 +20,13 @@ const Sound = (() => {
     if (!AC) return false;
     try { ctx = new AC(); } catch (e) { ctx = null; return false; }
     master = ctx.createGain(); master.gain.value = 0.9;
-    let out = master;
+    seaFilter = ctx.createBiquadFilter(); seaFilter.type = 'lowpass'; seaFilter.Q.value = 0.4; seaFilter.frequency.value = undersea ? SEA_HZ : AIR_HZ; // everything goes dull under water
+    master.connect(seaFilter);
+    let out = seaFilter;
     try {
       const comp = ctx.createDynamicsCompressor();
       comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 5; comp.attack.value = 0.004; comp.release.value = 0.18;
-      master.connect(comp); out = comp;
+      seaFilter.connect(comp); out = comp;
     } catch (e) { /* no compressor, fine */ }
     out.connect(ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.gain.value = 0.6; sfxBus.connect(master);
@@ -90,8 +93,26 @@ const Sound = (() => {
     o.connect(g); g.connect(sfxBus); o.start(t); l.start(t); o.stop(t + 0.7); l.stop(t + 0.7);
   }
 
+  function whale(delay) { // a rising, falling call
+    if (!live()) return;
+    const t = ctx.currentTime + (delay || 0), o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(520, t); o.frequency.exponentialRampToValueAtTime(1280, t + 0.3); o.frequency.exponentialRampToValueAtTime(740, t + 0.8);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.34, t + 0.06); g.gain.setValueAtTime(0.34, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.86);
+    o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.9);
+  }
+
   const semi = (f, s) => f * Math.pow(2, s / 12);
   const sfx = {
+    level() { [0, 7, 12, 19].forEach((s, i) => { const f = semi(440, s); tone('triangle', f, f, 0.17, 0.3, i * 0.07); }); tone('sine', 880, 1760, 0.32, 0.15, 0.28); },
+    tide(rising) { hiss(2.0, 0.5, 'lowpass', rising ? 260 : 1900, rising ? 2300 : 300, 0.6); tone('sine', rising ? 62 : 120, rising ? 130 : 58, 1.6, 0.4); },
+    plunge(under) {
+      hiss(0.5, 0.55, 'lowpass', 2600, 380, 0.6);
+      if (under) for (let i = 0; i < 5; i++) { const f = 420 + Math.random() * 500; tone('sine', f, f * 2, 0.09, 0.2, 0.08 + i * 0.07); }
+    },
+    bloop() { const f = 380 + Math.random() * 520; tone('sine', f, f * 1.9, 0.1, 0.11); },
+    seal() { for (const d of [0, 0.17]) { tone('sawtooth', 350 - d * 120, 245, 0.13, 0.3, d); tone('square', 175 - d * 60, 122, 0.13, 0.11, d); } },
+    orca() { whale(0); tone('sine', 1500, 2200, 0.12, 0.12, 0.34); },
+    boop() { tone('sine', 260, 620, 0.12, 0.6); tone('triangle', 520, 1240, 0.1, 0.16, 0.01); boing(0.06); hiss(0.25, 0.4, 'lowpass', 1400, 300, 0.7); },
     jump() { tone('sine', 310, 660, 0.19, 0.5); tone('triangle', 620, 1100, 0.12, 0.12, 0.02); },
     spring() { tone('sine', 250, 900, 0.27, 0.5); tone('triangle', 500, 1500, 0.2, 0.14, 0.02); boing(0.02); },
     rocket() { hiss(0.9, 0.7, 'bandpass', 500, 3200, 0.7); tone('sawtooth', 110, 340, 0.6, 0.22); },
@@ -208,6 +229,7 @@ const Sound = (() => {
     unlock, sfx, startMusic, stopMusic, rumble, jet,
     tempo(b) { music.bpm = b; },
     muffle(on) { muffled = on; applyMusicGain(); },
+    sea(on) { if (on === undersea) return; undersea = on; if (ctx) glide(seaFilter.frequency, on ? SEA_HZ : AIR_HZ, 0.12); },
     setSfx(on) { sfxOn = on; if (!on && ctx) { if (rumbleGain) { glide(rumbleGain.gain, 0, 0.05); rumbleV = 0; } if (jetGain) { glide(jetGain.gain, 0, 0.05); jetOn = 0; } } },
     setMusic(on) { musicOn = on; applyMusicGain(); },
     // Pausing fades the master volume instead of suspending the engine: suspend/resume is what tends to get stuck on phones.

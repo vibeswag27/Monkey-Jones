@@ -18,7 +18,8 @@ class FX {
         'void main(){ vCol = aCol; vAlpha = aAlpha; vKind = aKind; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * uScale / max(0.1, -mv.z); gl_Position = projectionMatrix * mv; }',
       fragmentShader: 'varying vec3 vCol; varying float vAlpha; varying float vKind;' +
         'void main(){ vec2 c = gl_PointCoord - 0.5; float d = length(c); float a;' +
-        ' if (vKind > 0.5) { a = smoothstep(0.016, 0.004, abs(c.x) * abs(c.y)) * smoothstep(0.5, 0.34, d); } else { a = smoothstep(0.5, 0.43, d); }' +
+        ' if (vKind > 1.5) { a = smoothstep(0.5, 0.45, d) * (0.26 + 0.74 * smoothstep(0.27, 0.41, d)); a = max(a, 0.95 * smoothstep(0.13, 0.06, length(c + vec2(0.17, 0.17)))); }' + // a bubble: bright rim, faint middle, one highlight
+        ' else if (vKind > 0.5) { a = smoothstep(0.016, 0.004, abs(c.x) * abs(c.y)) * smoothstep(0.5, 0.34, d); } else { a = smoothstep(0.5, 0.43, d); }' +
         ' if (a * vAlpha < 0.02) discard; gl_FragColor = vec4(vCol, a * vAlpha); }',
       transparent: true, depthWrite: false,
     });
@@ -46,6 +47,13 @@ class FX {
     for (let i = 0; i < n; i++) this.spawn(x + (Math.random() - 0.5) * 1.2, y + Math.random() * 2, z + (Math.random() - 0.5) * 0.8,
       (Math.random() - 0.5) * 9, 2 + Math.random() * 6, (Math.random() - 0.5) * 9, hex, 0.26 + Math.random() * 0.4, 0.7 + Math.random() * 0.4, 20, 0, 0, 1);
   }
+  // Bubbles wobble upwards and swell a little as they go.
+  bubbles(x, y, z, n, spread, scale) {
+    const sp = spread || 0.3, k = scale || 1;
+    for (let i = 0; i < n; i++) this.spawn(x + (Math.random() - 0.5) * sp, y + (Math.random() - 0.5) * sp, z + (Math.random() - 0.5) * sp,
+      (Math.random() - 0.5) * 0.7, 1.1 + Math.random() * 1.5, (Math.random() - 0.5) * 0.7, 0xeaffff, (0.12 + Math.random() * 0.2) * k, 1.1 + Math.random() * 1.1, -1.6, 0.45, 2, 0.9);
+  }
+  clear() { this.life.fill(0); this.size.fill(0); this.geo.attributes.aSize.needsUpdate = true; } // a new run starts with clean air
   splash(x, z) {
     for (let i = 0; i < 26; i++) { const a = Math.random() * TAU, r = 1 + Math.random() * 3.5; this.spawn(x, WATER_Y + 0.1, z, Math.cos(a) * r, 5 + Math.random() * 7, Math.sin(a) * r, i % 3 ? 0xffffff : 0xa9f0f2, 0.3 + Math.random() * 0.5, 0.8 + Math.random() * 0.5, 17, 0, 0, 0.95); }
     for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU; this.spawn(x + Math.cos(a) * 0.5, WATER_Y + 0.12, z + Math.sin(a) * 0.5, Math.cos(a) * 3.2, 0.1, Math.sin(a) * 3.2, 0xffffff, 0.7, 0.9, 0, 1.2, 0, 0.8); }

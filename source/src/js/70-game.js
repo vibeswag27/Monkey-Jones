@@ -1,6 +1,6 @@
 // ───────────────────────── game: save data, camera, player, rules ─────────────────────────
-let renderer, scene, camera, world, sky, monkey, boulder, fx;
-const _look = new THREE.Vector3();
+let renderer, scene, camera, world, sky, monkey, boulder, orca, fx;
+const _look = new THREE.Vector3(), _nose = new THREE.Vector3();
 const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* not available */ } };
 
 const Save = {
@@ -32,6 +32,32 @@ const Save = {
 };
 
 const powerTime = (k) => POWERS[k].t[Save.data.up[k] - 1];
+
+// The tide. At 0 the lagoon lies far below the path; at 1 the ruins are deep under water.
+const Tide = {
+  u: 0, aim: 0, y: WATER_Y, sub: 0, wet: false, under: false,
+  reset() { this.u = 0; this.aim = 0; this.y = WATER_Y; this.sub = 0; this.wet = false; this.under = false; },
+  // The water starts to rise one stretch before a High Tide level, and drains away once you are past the level.
+  follow(seg) { const a = seg.sea || isSea(levelOf(seg.depth + 1)) ? 1 : 0, turned = a !== this.aim; this.aim = a; return turned; },
+  height(u) { // fast up to the path, slow enough across it to watch the flood, then away overhead
+    if (u <= 0) return WATER_Y;
+    if (u < 0.34) { const k = u / 0.34; return WATER_Y + (-0.5 - WATER_Y) * (1.345 * k - 0.345 * k * k); }
+    if (u < 0.8) return -0.5 + 5.3 * ((u - 0.34) / 0.46);
+    if (u < 1) { const k = (u - 0.8) / 0.2; return 4.8 + (TIDE_TOP - 4.8) * (0.226 * k + 0.774 * k * k); }
+    return TIDE_TOP;
+  },
+  // Returns 'under' or 'out' on the frame the surface crosses the camera.
+  update(dt, camY) {
+    if (this.u !== this.aim) { const d = dt / 2.9; this.u = this.aim > this.u ? Math.min(this.aim, this.u + d) : Math.max(this.aim, this.u - d); }
+    this.y = this.height(this.u);
+    this.sub = clamp(this.y - camY + 0.5, 0, 1); // 0 with the surface below the camera, 1 once it has closed overhead
+    this.wet = this.y > 1.3;                      // deep enough that he is swimming rather than wading
+    const now = this.sub > 0.5;
+    if (now === this.under) return null;
+    this.under = now;
+    return now ? 'under' : 'out';
+  },
+};
 
 // Camera: orbits a smoothed follow point. a = orbit angle (0 = behind Monkey Jones, π = in front).
 const Cam = {
@@ -140,12 +166,16 @@ const Player = {
   startSlide() { this.slide = SLIDE_T; this.slideOnLand = false; monkey.bounce(0.84); Sound.sfx.slide(); fx.dust(this.wx, 0, this.wz, 5); },
   tryTurn() {
     const seg = this.seg, L = seg.len, dir = this.turnQ;
-    if (!dir || this.s < L - LANE_W - 0.45) return false;
+    if (!dir) return false;
+    // Each lane turns on the junction's diagonal, so you come out of a corner in the lane you went in on:
+    // the inside lane turns first and the outside lane runs a little further before it does.
+    const pivot = L + (dir === 'R' ? -1 : 1) * this.lane * LANE_W;
+    if (this.s < pivot) return false;
     const child = seg.kids[dir];
     if (!child || !child.group) return false;
     const ns = dir === 'R' ? this.x : -this.x, nx = dir === 'R' ? L - this.s : this.s - L;
     this.seg = world.enter(dir);
-    this.s = ns; this.x = nx; this.lane = clamp(Math.round(nx / LANE_W), -1, 1); this.turnQ = null;
+    this.s = ns; this.x = nx; this.turnQ = null; // the lane is kept; a late swipe just eases him back across to it
     this.lean = dir === 'R' ? -0.5 : 0.5;
     Sound.sfx.turn(); Game.onTurn();
     return true;
@@ -174,7 +204,7 @@ const Player = {
     let left = run.speed * dt;
     while (left > 0 && !this.dead) { // small steps, so nothing is skipped at speed
       const step = Math.min(left, 0.4); left -= step; this.s += step;
-      if (this.flying && !this.turnQ && this.s > this.seg.len - 0.8) this.turnQ = this.seg.jt === 'T' ? (Math.random() < 0.5 ? 'L' : 'R') : this.seg.jt; // the rocket steers itself round corners
+      if (this.flying && !this.turnQ && this.s > this.seg.len - LANE_W - 0.6) this.turnQ = this.seg.jt === 'T' ? (Math.random() < 0.5 ? 'L' : 'R') : this.seg.jt; // the rocket steers itself round corners
       if (this.turnQ) this.tryTurn();
       if (!this.flying) this.collide();
     }
@@ -230,13 +260,13 @@ const HINTS = [
 
 const Game = {
   state: 'title', time: 0, run: null, death: null, introT: 0, introLen: 1.75, quick: false,
-  bGap: 15, bPos: new THREE.Vector3(), bSnap: true, bYaw: 0, camFrom: null, camTo: null, bS0: -31, scared: false, hintOn: -1,
+  bGap: 15, bPos: new THREE.Vector3(), bSnap: true, bYaw: 0, camFrom: null, camTo: null, bS0: -31, scared: false, hintOn: -1, skyP: 0, seaK: 0, bubT: 0,
 
   blankRun() {
-    return { dist: 0, score: 0, nanas: 0, mult: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
+    return { dist: 0, score: 0, nanas: 0, mult: 1, level: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
       magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1 } };
   },
-  closeGap() { return Cam.portrait ? 4.6 : 4.9; },
+  closeGap() { return Tide.wet ? 3.2 : Cam.portrait ? 4.6 : 4.9; }, // the orca is lower than the boulder, so it comes in closer to be seen
 
   // ── screens ──
   toTitle() {
@@ -247,7 +277,7 @@ const Game = {
     monkey.holdBanana(true);
     boulder.group.visible = false; this.bGap = 15;
     Cam.lookAt = null; Cam.fovKick = 0; Cam.snap(Cam.preset('title'));
-    sky.setBiome(0);
+    this.dryLand();
     Sound.muffle(true); Sound.rumble(0);
     UI.setState('title'); UI.refreshTitle(); UI.hint(null); UI.danger(false);
     this.frameTitle(0, true);
@@ -256,6 +286,8 @@ const Game = {
     if (this.state !== 'title' && !quick) return;
     Roster.use(Save.data.char); // in case the character screen was showing someone else
     this.run = this.blankRun(); this.death = null;
+    this.run.level = world.cur.level; this.run.mult = Math.min(10, this.run.level);
+    this.skyP = landIndex(this.run.level); Tide.follow(world.cur);
     this.state = 'intro'; this.quick = !!quick; this.introT = 0; this.introLen = quick ? 1.0 : 1.8; this.scared = false; this.hintOn = -1;
     monkey.holdBanana(false); monkey.setExpr('normal');
     boulder.group.visible = true; this.bS0 = quick ? -15 : -31; this.bGap = Player.s - this.bS0; this.bSnap = true;
@@ -270,9 +302,14 @@ const Game = {
     world.reset((Math.random() * 4294967295) >>> 0, Save.data.runs < 2);
     Player.reset(world.cur);
     Roster.use(Save.data.char); monkey.fresh(); Sound.jet(0);
-    Cam.lookAt = null; Cam.fovKick = 0; sky.setBiome(0); UI.hint(null); UI.danger(false);
+    Cam.lookAt = null; Cam.fovKick = 0; this.dryLand(); UI.hint(null); UI.danger(false);
     this.state = 'title';
     this.startIntro(true);
+  },
+  // Back above water in the morning light: the state every run starts from.
+  dryLand() {
+    this.skyP = 0; this.seaK = 0; Tide.reset(); sky.setLook(0, 0); fx.clear();
+    orca.group.visible = false; Sound.sea(false); UI.sea(false);
   },
   pause() { if (this.state !== 'run' && this.state !== 'count') return; this.state = 'pause'; UI.setState('pause'); UI.stopCount(); Sound.sleep(); },
   resume() {
@@ -286,9 +323,14 @@ const Game = {
 
   // ── rules ──
   onTurn() {
-    const run = this.run; run.turns++;
-    if (Player.flying) for (const t of ['L', 'R']) if (Player.seg.kids[t]) world.addSky(Player.seg.kids[t], HJ + 6);
+    const run = this.run, seg = Player.seg; run.turns++;
+    if (Player.flying) for (const t of ['L', 'R']) if (seg.kids[t]) world.addSky(seg.kids[t], HJ + 6);
     if (this.hintOn >= 0) { UI.hint(null); this.hintOn = -1; }
+    if (seg.level > run.level) { // every corner that starts a new level: faster, tighter, and worth more
+      run.level = seg.level; run.mult = Math.min(10, run.level);
+      UI.levelUp(run.level); Sound.sfx.level();
+    }
+    if (Tide.follow(seg)) { Sound.sfx.tide(Tide.aim > 0); if (Tide.aim > 0) UI.toast('Here comes the tide!'); }
   },
   stumble(o) {
     const run = this.run, P = Player;
@@ -298,7 +340,9 @@ const Game = {
     run.danger = 5.5; run.slow = 0.45; run.invuln = 0.75; P.stumbleT = 0;
     monkey.setExpr('squint', 0.75); Sound.sfx.stumble(); Cam.kick(0.55); buzz(40);
     fx.dust(P.wx, 0.1, P.wz, 7);
-    if (o && o.type !== 'pillar') fx.debris(P.wx, 0.1, P.wz, 5, o.type === 'log' ? ENV.wood : 0x9aa3a8);
+    if (Tide.wet) Sound.sfx.orca(); // somewhere behind, something has noticed
+    if (o && o.skin === 'seal') { Sound.sfx.seal(); fx.bubbles(P.wx, 0.7, P.wz, 8, 1.1); } // a rude awakening
+    else if (o && o.type !== 'pillar') fx.debris(P.wx, 0.1, P.wz, 5, o.type === 'log' ? ENV.wood : 0x9aa3a8);
   },
   hitSolid(o) {
     const run = this.run, P = Player;
@@ -359,12 +403,10 @@ const Game = {
   updateRun(dt) {
     const run = this.run, P = Player;
     if (run.slow > 0) run.slow -= dt;
-    run.speed = damp(run.speed, speedAt(run.dist) * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), 5, dt);
+    run.speed = damp(run.speed, levelSpeed(run.level) * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), 5, dt);
     P.update(dt);
     if (P.dead) return;
     run.dist += run.speed * dt;
-    const m = Math.min(10, 1 + Math.floor(run.dist / 300));
-    if (m > run.mult) { run.mult = m; UI.toast('Score ×' + m); }
     run.score += run.speed * dt * run.mult * (run.dbl > 0 ? 2 : 1);
     if (run.danger > 0) run.danger -= dt;
     if (run.invuln > 0) run.invuln -= dt;
@@ -400,7 +442,8 @@ const Game = {
       const d = P.seg.dir, back = run.speed - 7; // flames trail a little way behind him, not all the way to the camera
       for (let i = 0; i < 2; i++) {
         monkey.nozzles[i].getWorldPosition(_look);
-        fx.spawn(_look.x, _look.y, _look.z, d.fx * back + (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, d.fz * back + (Math.random() - 0.5) * 1.2, Math.random() < 0.5 ? 0xff8a1f : 0xffe066, 0.3, 0.12 + Math.random() * 0.08, 0, -0.8, 0, 0.95);
+        if (Tide.wet) { if (Math.random() < 0.4) fx.bubbles(_look.x, _look.y, _look.z, 1, 0.25, 0.6); } // under water the rocket leaves a wake of bubbles
+        else fx.spawn(_look.x, _look.y, _look.z, d.fx * back + (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, d.fz * back + (Math.random() - 0.5) * 1.2, Math.random() < 0.5 ? 0xff8a1f : 0xffe066, 0.3, 0.12 + Math.random() * 0.08, 0, -0.8, 0, 0.95);
       }
     }
     this.bGap = damp(this.bGap, run.danger > 0 ? this.closeGap() : 15, run.danger > 0 ? 7 : 1.1, dt);
@@ -423,11 +466,12 @@ const Game = {
     for (const k in this.camTo) { Cam.c[k] = lerp(this.camFrom[k], this.camTo[k], cu); Cam.t[k] = Cam.c[k]; }
     Cam.c.ahead = Cam.t.ahead = this.camTo.ahead * cu * cu * cu; // keep him in frame while the camera swings round
     Cam.kick(0.12);
-    if (t >= T && !P.dead) { this.state = 'run'; run.danger = 1.5; UI.setState('run'); }
+    if (t >= T && !P.dead) { this.state = 'run'; run.danger = 1.5; UI.setState('run'); UI.levelUp(run.level); }
   },
 
   kill(type) {
     const P = Player;
+    if (Tide.wet) type = type === 'fall' ? 'sink' : type === 'flat' ? 'boop' : type; // under water the same mistakes end differently
     this.state = 'dying'; UI.setState('dying'); UI.hint(null); UI.danger(false); Sound.jet(0);
     this.death = { type, t: 0, s0: P.s, y0: Math.max(0, P.y), landed: false, drop: false, splashed: false, ts: 0, squashed: false, tq: 0 };
     P.slide = 0; P.stumbleT = -1; this.hintOn = -1;
@@ -436,7 +480,7 @@ const Game = {
       Sound.sfx.bonk(); Cam.kick(1.1); monkey.setExpr('x'); monkey.bounce(0.6); buzz(90);
       fx.sparkle(P.wx, P.y + 1.3, P.wz, 10, 0xffe45c);
       Cam.to(Cam.preset('down'), 2.6);
-    } else if (type === 'fall') {
+    } else if (type === 'fall' || type === 'sink') {
       monkey.setExpr('wide'); P.vy = 0;
       Cam.to(Object.assign(Cam.preset('down'), { a: 0.3, height: 3.6, dist: 5.4 }), 3);
     } else { monkey.setExpr('wide'); Cam.to(Cam.preset('down'), 2.6); }
@@ -444,6 +488,7 @@ const Game = {
   updateDying(dt) {
     const d = this.death, P = Player, run = this.run, t = (d.t += dt);
     let mode = 'run';
+    if (d.type !== 'flat' && d.type !== 'boop') this.bGap = damp(this.bGap, 16, 4, dt); // whatever was chasing him drops back out of the picture
     if (d.type === 'bonk') { // bounce back off it and land flat on his back
       const u = clamp(t / 0.6, 0, 1);
       P.s = d.s0 - 2.4 * easeOut(u);
@@ -461,6 +506,35 @@ const Game = {
       if (!d.splashed && P.y < WATER_Y + 0.3) { d.splashed = true; d.ts = t; fx.splash(P.wx, P.wz); Sound.sfx.splash(); monkey.root.visible = false; }
       if (d.splashed && t > d.ts + 0.95) this.over();
       Cam.lookAt = _look.set(P.wx, Math.max(P.y, WATER_Y) + 0.6, P.wz);
+    } else if (d.type === 'sink') { // under water he drifts down to the sea bed instead of dropping
+      if (t < 0.34) P.s += run.speed * Math.max(0, 0.3 - t) * dt;
+      else if (!d.landed) {
+        if (!d.drop) { d.drop = true; Sound.sfx.bloop(); }
+        P.vy = Math.max(P.vy - GRAVITY * 0.3 * dt, -6); P.y += P.vy * dt;
+        if (Math.random() < dt * 26) fx.bubbles(P.wx, Math.min(0.4, P.y + 1), P.wz, 1, 0.5);
+        if (P.y < WATER_Y + 0.1) { d.landed = true; P.y = WATER_Y + 0.1; monkey.setExpr('x'); fx.dust(P.wx, WATER_Y + 0.1, P.wz, 12, 0xe9dcb0); }
+      }
+      if (t > 2.0) this.over();
+      mode = d.landed ? 'bonk' : 'fall';
+      Cam.lookAt = _look.set(P.wx, Math.max(P.y, WATER_Y) + 0.6, P.wz);
+    } else if (d.type === 'boop') { // the orca noses him clean off his feet
+      const reach = 1.8;
+      if (!d.squashed) {
+        this.bGap = Math.max(reach, this.bGap - 19 * dt);
+        run.speed = damp(run.speed, 0, 6, dt); P.s += run.speed * dt;
+        if (this.bGap <= reach + 0.01) {
+          const seg = P.seg, next = seg.obstacles.find((o) => !o.gone && o.s1 > P.s), pit = seg.holes.find((h) => h.s1 > P.s);
+          d.fly = clamp(Math.min(next ? next.s0 - P.s - 1.3 : 9, pit ? pit.s0 - P.s - 1 : 9, seg.len + HJ - 1.4 - P.s), 0.6, 7.5); // room to land in
+          d.squashed = true; d.tq = t; d.s1 = P.s; Sound.sfx.boop(); Cam.kick(1.1); monkey.setExpr('x'); buzz(110); fx.bubbles(P.wx, 0.9, P.wz, 16, 1.3);
+        }
+      } else {
+        const u = clamp((t - d.tq) / 0.95, 0, 1);
+        P.s = d.s1 + d.fly * easeOut(u); P.y = Math.sin(Math.PI * u) * 2.7; // up and over in a slow arc, then down on his back
+        this.bGap = damp(this.bGap + (P.s - (d.sp === undefined ? d.s1 : d.sp)), 3.1, 2.6, dt); d.sp = P.s; // the orca noses after him and hovers there, wriggling with glee
+        if (u >= 1 && !d.landed) { d.landed = true; P.y = 0; monkey.bounce(0.72); monkey.stars.visible = true; fx.dust(P.wx, 0, P.wz, 8); Sound.sfx.land(); }
+        if (t > d.tq + 2.1) this.over();
+      }
+      mode = !d.squashed ? 'run' : d.landed ? 'bonk' : 'fall';
     } else { // the boulder catches him
       this.bGap = Math.max(-22, this.bGap - (d.squashed ? 12 : 17) * dt);
       run.speed = damp(run.speed, 0, 9, dt); P.s += run.speed * dt;
@@ -494,9 +568,15 @@ const Game = {
     const ox = b.x, oz = b.z;
     b.x = damp(b.x, tx, 16, dt); b.z = damp(b.z, tz, 16, dt);
     this.bYaw = dampAngle(this.bYaw, seg.yaw, 8, dt);
+    const moved = Math.hypot(b.x - ox, b.z - oz), shown = this.bGap < 13.5 && this.state !== 'title';
+    // On land a boulder rolls after him. Under water the orca takes over (if one is in sight at the time, they swap in a blink).
+    const k = this.seaK = damp(this.seaK, Tide.wet ? 1 : 0, 10, dt);
     boulder.group.position.set(b.x, 0, b.z); boulder.group.rotation.y = this.bYaw;
-    boulder.roll(Math.hypot(b.x - ox, b.z - oz));
-    boulder.group.visible = this.bGap < 13.5 && this.state !== 'title';
+    boulder.roll(moved);
+    boulder.group.visible = shown && k < 0.97; boulder.group.scale.setScalar(Math.max(0.01, 1 - k));
+    orca.group.position.set(b.x, 0, b.z); orca.group.rotation.y = this.bYaw;
+    orca.group.visible = shown && k > 0.03; orca.group.scale.setScalar(Math.max(0.01, k));
+    if (orca.group.visible) orca.update(dt, this.time, dt > 0 ? moved / dt : 0, this.death && this.death.type === 'boop' && this.death.squashed ? 1 : 0);
     const near = clamp((13 - Math.abs(this.bGap)) / 9, 0, 1);
     Sound.rumble(this.state === 'over' || this.state === 'title' ? 0 : near * 0.55);
     if (near > 0.55 && (this.state === 'run' || this.state === 'intro')) Cam.kick(0.07 + (near - 0.55) * 0.2);
@@ -518,13 +598,13 @@ const Game = {
     this.time += dt;
     const st = this.state, P = Player, run = this.run;
     if (st === 'pause' || st === 'count') return;
-    if (st === 'title') { this.frameTitle(dt, false); world.update(dt, this.time, P.wx, 0, P.wz); fx.update(dt, this.pScale()); sky.update(dt, this.time, camera); return; }
+    if (st === 'title') { this.frameTitle(dt, false); world.update(dt, this.time, P.wx, 0, P.wz); fx.update(dt, this.pScale()); sky.update(dt, this.time, camera, WATER_Y); return; }
 
     let mode = 'run';
     if (st === 'intro') { this.updateIntro(dt); mode = this.introT < (this.quick ? 0 : 0.62) ? 'scare' : 'run'; }
     else if (st === 'run') this.updateRun(dt);
     if (this.state === 'dying') mode = this.updateDying(dt);
-    else if (this.state === 'over') mode = this.death.type === 'bonk' ? 'bonk' : this.death.type === 'flat' ? 'flat' : 'fall';
+    else if (this.state === 'over') mode = this.death.type === 'fall' ? 'fall' : this.death.type === 'flat' ? 'flat' : 'bonk';
     if ((this.state === 'run' || this.state === 'intro') && mode === 'run') mode = P.flying ? 'fly' : P.grounded || P.coyote > 0 ? (P.slide > 0 ? 'slide' : 'run') : 'air';
 
     // Monkey Jones
@@ -540,12 +620,35 @@ const Game = {
 
     this.placeBoulder(dt);
     world.update(dt, this.time, P.wx, P.y, P.wz);
-    sky.setBiome(run.dist);
     fx.update(dt, this.pScale());
     const camY = this.state === 'dying' && this.death.type === 'fall' ? 0 : P.flying ? P.y * 0.4 : Math.max(0, P.y) * 0.35;
     Cam.update(dt, P.seg.wx(P.s, P.x * 0.7), camY, P.seg.wz(P.s, P.x * 0.7), P.seg.yaw, false);
-    sky.update(dt, this.time, camera);
+    this.updateSea(dt);
+    sky.update(dt, this.time, camera, Tide.y);
     UI.hud(run, false);
+  },
+  // The tide, the time of day, and everything that changes when the water closes overhead.
+  updateSea(dt) {
+    const want = landIndex(this.run.level);
+    if (this.skyP < want) this.skyP = Math.min(want, this.skyP + dt / 5);
+    const ev = Tide.update(dt, camera.position.y);
+    if (ev) {
+      const under = ev === 'under', c = camera.position;
+      UI.plunge(sky.dim); UI.sea(under); Sound.sea(under); Sound.sfx.plunge(under);
+      if (under) fx.bubbles(c.x, c.y - 1, c.z, 22, 7);
+    }
+    sky.setLook(this.skyP, Tide.sub);
+    if (Tide.under && this.state !== 'over') { // bubbles drifting up all around, and a trail from his nose
+      const P = Player, d = P.seg.dir;
+      this.bubT -= dt;
+      if (this.bubT <= 0) {
+        this.bubT = 0.07;
+        const a = 4 + Math.random() * 24, b = (Math.random() - 0.5) * 17;
+        fx.bubbles(P.wx + d.fx * a + d.rx * b, Math.random() * 3.2, P.wz + d.fz * a + d.rz * b, 1, 0.2);
+        if (Math.random() < 0.5 && monkey.root.visible) { monkey.head.getWorldPosition(_nose); fx.bubbles(_nose.x, _nose.y + 0.1, _nose.z, 1, 0.12, 0.55); }
+      }
+      if (Math.random() < dt * 1.2) Sound.sfx.bloop();
+    }
   },
   pScale() { return renderer ? renderer.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360)) : 400; },
 };

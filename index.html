@@ -62,6 +62,8 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cu
 .chip svg{width:25px;height:25px;flex:none}
 .chip.pop{animation:pop .18s}
 .mult{background:var(--banana);padding:0 11px;font-size:17px}
+.lvl{padding:0 11px;font-size:17px}
+.hud-row{display:flex;align-items:center;gap:8px}
 .powers{display:flex;flex-direction:column;gap:7px}
 .pw{display:flex;align-items:center;gap:7px;background:var(--cream);border:3px solid var(--ink);border-radius:13px;padding:3px 9px 3px 5px;box-shadow:0 3px 0 var(--ink);font-size:14px;font-weight:700}
 .pw svg{width:22px;height:22px;flex:none}
@@ -86,9 +88,27 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
 .hint svg{width:30px;height:30px;flex:none;animation:nudge .5s ease-in-out infinite alternate}
 @keyframes nudge{to{transform:var(--nudge,translateY(-5px))}}
 
-.toast{position:absolute;left:50%;top:30%;transform:translateX(-50%);font-family:var(--display);font-size:clamp(22px,7vw,34px);color:var(--banana);--stroke:7px;--drop:4px;white-space:nowrap;opacity:0}
+.toast{position:absolute;left:50%;top:36%;transform:translateX(-50%);font-family:var(--display);font-size:clamp(22px,7vw,34px);color:var(--banana);--stroke:7px;--drop:4px;white-space:nowrap;opacity:0}
 .toast.on{animation:toast 1.5s ease-out}
 @keyframes toast{0%{opacity:0;transform:translateX(-50%) scale(.6)}12%{opacity:1;transform:translateX(-50%) scale(1.08)}20%{transform:translateX(-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-14px)}}
+
+/* a new level: the number in the logo's lettering, and the name of the place on the logo's ribbon */
+.levelup{position:absolute;left:50%;top:19%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap;opacity:0}
+.levelup .num{font-family:var(--display);font-size:clamp(34px,11.5vw,58px);line-height:1;color:var(--banana);--stroke:9px;--drop:5px;transform:rotate(-4deg)}
+.levelup .ribbon{margin:.42em 0 0 16%;font-size:clamp(15px,4.6vw,22px)}
+.levelup.sea .ribbon{background:#0A8C8A}
+.levelup.on{animation:levelup 2.2s ease-out}
+/* announcements belong to the run: they never linger over the menus */
+.toast,.levelup{visibility:hidden}
+[data-state="intro"] .toast,[data-state="run"] .toast,[data-state="count"] .toast,[data-state="dying"] .toast,[data-state="intro"] .levelup,[data-state="run"] .levelup,[data-state="count"] .levelup,[data-state="dying"] .levelup{visibility:visible}
+@keyframes levelup{0%{opacity:0;transform:translateX(-50%) scale(.5)}9%{opacity:1;transform:translateX(-50%) scale(1.1)}16%{transform:translateX(-50%) scale(1)}84%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-16px)}}
+
+/* under water: the corners of the view fall away into deep blue, and a wash of foam marks going under or coming up */
+#sea{opacity:0;transition:opacity .45s;background:radial-gradient(ellipse at 50% 44%,rgba(6,52,74,0) 48%,rgba(5,44,66,.5) 100%)}
+#sea.on{opacity:1}
+#plunge{opacity:0;background:linear-gradient(rgba(214,252,250,.92),rgba(74,198,212,.88))}
+#plunge.on{animation:plunge .6s ease-out}
+@keyframes plunge{0%{opacity:0}16%{opacity:.82}100%{opacity:0}}
 
 /* ---------- Screens ---------- */
 .screen{opacity:0;visibility:hidden;transition:opacity .2s,visibility 0s .2s}
@@ -198,6 +218,15 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
   .title-foot{gap:8px}
   .title-foot .big{font-size:24px}
   .how{font-size:15px}
+  /* a phone on its side: the cards go wide and short, with the stats two to a row */
+  #over .card,#pause .card{width:min(100%,440px);padding:12px 20px 16px;gap:8px}
+  #over .boom,#pause .boom{font-size:clamp(24px,8.5vh,32px)}
+  #over .sub{font-size:15px;margin-top:-2px}
+  #over .stats{grid-template-columns:1fr auto 1fr auto;gap:2px 14px;font-size:16px}
+  #over .stats dd:nth-of-type(odd){margin-right:16px}
+  #over .card .big,#pause .card .big{font-size:22px}
+  .levelup{top:13%}
+  .toast{top:46%}
 }
 @media (prefers-reduced-motion: reduce){ .pulse,.hint svg,#danger.on{animation:none} #danger.on{box-shadow:inset 0 -40px 90px 0 rgba(239,60,30,.5)} }
 </style>
@@ -205,12 +234,17 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
 <body>
 <div id="stage" data-state="title">
   <canvas id="c" tabindex="-1" aria-label="Monkey Jones running through the jungle ruins"></canvas>
+  <div id="sea" class="layer"></div>
+  <div id="plunge" class="layer"></div>
   <div id="danger" class="layer"></div>
 
   <div id="hud" class="layer">
     <div class="hud-left">
       <div id="score" class="score inked" data-t="0">0</div>
-      <div id="mult" class="chip mult">×1</div>
+      <div class="hud-row">
+        <div id="level" class="chip lvl">Level 1</div>
+        <div id="mult" class="chip mult" aria-label="Score multiplier">×1</div>
+      </div>
       <div id="powers" class="powers"></div>
     </div>
     <div class="hud-right">
@@ -226,6 +260,7 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
 
   <div class="layer"><div id="hint" class="hint"><span id="hintIcon"></span><span id="hintText"></span></div></div>
   <div class="layer"><div id="toast" class="toast inked" data-t=""></div></div>
+  <div class="layer"><div id="levelUp" class="levelup" aria-live="polite"><span id="levelNum" class="num inked" data-t="Level 1">Level 1</span><span id="levelName" class="ribbon">Jungle Ruins</span></div></div>
 
   <div id="title" class="layer screen">
     <div class="title-head">
@@ -282,6 +317,7 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
       <dl class="stats">
         <dt>Score</dt><dd id="oScore">0</dd>
         <dt>Distance</dt><dd id="oDist">0 m</dd>
+        <dt>Level</dt><dd id="oLevel">1</dd>
         <dt>Bananas</dt><dd id="oNanas">0</dd>
         <dt>Best</dt><dd id="oBest">0</dd>
       </dl>
@@ -391,8 +427,21 @@ const JUMP_V = 11.4;
 const AIR_T = (2 * JUMP_V) / GRAVITY;            // ~0.67 s in the air
 const JUMP_H = (JUMP_V * JUMP_V) / (2 * GRAVITY); // ~1.9 m
 const SLIDE_T = 0.72;
-const SPEED_MIN = 11, SPEED_MAX = 23;
-const speedAt = (d) => SPEED_MIN + (SPEED_MAX - SPEED_MIN) * (1 - Math.exp(-Math.max(0, d) / 1900));
+const SPEED_MIN = 11, SPEED_MAX = 29;
+
+// Levels. A level is a few stretches of track, and you move up one at a corner. Each level is faster and more
+// tightly packed than the one before by a fixed ratio, so the difficulty compounds instead of creeping up.
+const LEVEL_STRETCHES = 4;
+const SPEED_GROW = 1.1;       // +10 % running speed per level, up to SPEED_MAX
+const GAP_SHRINK = 0.93;      // -7 % clear running between obstacles per level …
+const GAP_MIN = 0.52;         // … down to about half a second
+const levelOf = (depth) => 1 + Math.floor(depth / LEVEL_STRETCHES);
+const levelSpeed = (L) => Math.min(SPEED_MAX, SPEED_MIN * Math.pow(SPEED_GROW, L - 1));
+const levelGap = (L) => Math.max(GAP_MIN, 1.3 * Math.pow(GAP_SHRINK, L - 1));
+const isSea = (L) => L % 3 === 2;                              // High Tide: levels 2, 5, 8, …
+const landIndex = (L) => L - 1 - Math.floor((L + 1) / 3);      // how many dry levels came before this one
+const LAND_NAMES = ['Jungle Ruins', 'Sunset Ruins', 'Moonlit Ruins', 'Dawn Ruins'];
+const levelName = (L) => (isSea(L) ? 'High Tide' : LAND_NAMES[landIndex(L) % 4]);
 
 // Headings: 0 = north (-Z), 1 = east (+X), 3 = west (-X). The path never heads south,
 // which guarantees it can never cross itself.
@@ -423,8 +472,9 @@ const fmt = (n) => Math.floor(n).toLocaleString('en-US');
 
 // ───────────────────────── sound: all synthesized, nothing downloaded ─────────────────────────
 const Sound = (() => {
-  let ctx = null, master, sfxBus, musBus, musFilter, noiseBuf, rumbleGain = null;
-  let sfxOn = true, musicOn = true, muffled = false, hushed = false, rebuilds = 0, rumbleV = -1;
+  const AIR_HZ = 18000, SEA_HZ = 1700;
+  let ctx = null, master, sfxBus, musBus, musFilter, seaFilter, noiseBuf, rumbleGain = null;
+  let sfxOn = true, musicOn = true, muffled = false, hushed = false, undersea = false, rebuilds = 0, rumbleV = -1;
   // Glide a volume to a new level. Old automation is cleared first: left to pile up (one event per frame),
   // it slowly chokes the audio engine on iPhones until the sound cuts out.
   function glide(param, v, tc) {
@@ -442,11 +492,13 @@ const Sound = (() => {
     if (!AC) return false;
     try { ctx = new AC(); } catch (e) { ctx = null; return false; }
     master = ctx.createGain(); master.gain.value = 0.9;
-    let out = master;
+    seaFilter = ctx.createBiquadFilter(); seaFilter.type = 'lowpass'; seaFilter.Q.value = 0.4; seaFilter.frequency.value = undersea ? SEA_HZ : AIR_HZ; // everything goes dull under water
+    master.connect(seaFilter);
+    let out = seaFilter;
     try {
       const comp = ctx.createDynamicsCompressor();
       comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 5; comp.attack.value = 0.004; comp.release.value = 0.18;
-      master.connect(comp); out = comp;
+      seaFilter.connect(comp); out = comp;
     } catch (e) { /* no compressor, fine */ }
     out.connect(ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.gain.value = 0.6; sfxBus.connect(master);
@@ -513,8 +565,26 @@ const Sound = (() => {
     o.connect(g); g.connect(sfxBus); o.start(t); l.start(t); o.stop(t + 0.7); l.stop(t + 0.7);
   }
 
+  function whale(delay) { // a rising, falling call
+    if (!live()) return;
+    const t = ctx.currentTime + (delay || 0), o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(520, t); o.frequency.exponentialRampToValueAtTime(1280, t + 0.3); o.frequency.exponentialRampToValueAtTime(740, t + 0.8);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.34, t + 0.06); g.gain.setValueAtTime(0.34, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.86);
+    o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.9);
+  }
+
   const semi = (f, s) => f * Math.pow(2, s / 12);
   const sfx = {
+    level() { [0, 7, 12, 19].forEach((s, i) => { const f = semi(440, s); tone('triangle', f, f, 0.17, 0.3, i * 0.07); }); tone('sine', 880, 1760, 0.32, 0.15, 0.28); },
+    tide(rising) { hiss(2.0, 0.5, 'lowpass', rising ? 260 : 1900, rising ? 2300 : 300, 0.6); tone('sine', rising ? 62 : 120, rising ? 130 : 58, 1.6, 0.4); },
+    plunge(under) {
+      hiss(0.5, 0.55, 'lowpass', 2600, 380, 0.6);
+      if (under) for (let i = 0; i < 5; i++) { const f = 420 + Math.random() * 500; tone('sine', f, f * 2, 0.09, 0.2, 0.08 + i * 0.07); }
+    },
+    bloop() { const f = 380 + Math.random() * 520; tone('sine', f, f * 1.9, 0.1, 0.11); },
+    seal() { for (const d of [0, 0.17]) { tone('sawtooth', 350 - d * 120, 245, 0.13, 0.3, d); tone('square', 175 - d * 60, 122, 0.13, 0.11, d); } },
+    orca() { whale(0); tone('sine', 1500, 2200, 0.12, 0.12, 0.34); },
+    boop() { tone('sine', 260, 620, 0.12, 0.6); tone('triangle', 520, 1240, 0.1, 0.16, 0.01); boing(0.06); hiss(0.25, 0.4, 'lowpass', 1400, 300, 0.7); },
     jump() { tone('sine', 310, 660, 0.19, 0.5); tone('triangle', 620, 1100, 0.12, 0.12, 0.02); },
     spring() { tone('sine', 250, 900, 0.27, 0.5); tone('triangle', 500, 1500, 0.2, 0.14, 0.02); boing(0.02); },
     rocket() { hiss(0.9, 0.7, 'bandpass', 500, 3200, 0.7); tone('sawtooth', 110, 340, 0.6, 0.22); },
@@ -631,6 +701,7 @@ const Sound = (() => {
     unlock, sfx, startMusic, stopMusic, rumble, jet,
     tempo(b) { music.bpm = b; },
     muffle(on) { muffled = on; applyMusicGain(); },
+    sea(on) { if (on === undersea) return; undersea = on; if (ctx) glide(seaFilter.frequency, on ? SEA_HZ : AIR_HZ, 0.12); },
     setSfx(on) { sfxOn = on; if (!on && ctx) { if (rumbleGain) { glide(rumbleGain.gain, 0, 0.05); rumbleV = 0; } if (jetGain) { glide(jetGain.gain, 0, 0.05); jetOn = 0; } } },
     setMusic(on) { musicOn = on; applyMusicGain(); },
     // Pausing fades the master volume instead of suspending the engine: suspend/resume is what tends to get stuck on phones.
@@ -1246,8 +1317,128 @@ class Boulder {
   roll(dist) { this.ball.rotation.x -= dist / this.R; }
 }
 
+// ───────────────────────── sea creatures, modelled on the plush seal and the plush orca ─────────────────────────
+const SEAL = { body: 0xf3b9a2, flip: 0xe9a68d, muzzle: 0xb36b36, dark: 0x2a1a14, dot: 0x7a4322, spot: 0xe8974e };
+const ORCA = { black: 0x2c3142, white: 0xf8f4ea, pupil: 0x15171d };
+MAT.inkDark = new THREE.MeshBasicMaterial({ color: 0x12141b, side: THREE.BackSide });
+
+// A seal on its belly, nose towards -Z, about 2.1 m from nose to flipper tips and 0.8 m tall. asleep: eyes shut.
+function sealGeo(asleep) {
+  const gb = new GeoBuilder(), c = SEAL;
+  gb.add(SHAPE.sphHi, M(0, 0.4, -0.02, 0.84, 0.8, 1.5), c.body);                                             // a loaf of a body
+  gb.add(taperTube([v3(0, 0.35, 0.3), v3(0, 0.28, 0.62), v3(0, 0.2, 0.92)], 8, 0.3, 0.13, 10), IDENT, c.body); // tapering to the tail
+  gb.add(SHAPE.sphHi, M(0, 0.42, -0.5, 0.88, 0.82, 0.82), c.body);                                           // domed head, as wide as the body
+  gb.add(SHAPE.sph, M(0, 0.29, -0.845, 0.46, 0.32, 0.24), c.muzzle);                                         // caramel muzzle
+  gb.add(SHAPE.cone4, M(0, 0.385, -0.955, 0.18, 0.12, 0.07, Math.PI, 0, 0), c.dark);                         // nose: a black triangle, point down
+  gb.add(SHAPE.box, M(0, 0.265, -0.96, 0.02, 0.13, 0.02), c.dark);                                           // the seam below it
+  for (const sx of [-1, 1]) {
+    for (const [dx, dy] of [[0.1, 0.275], [0.155, 0.315], [0.15, 0.235]]) gb.add(SHAPE.sphLo, M(sx * dx, dy, -0.945 + dx * 0.22, 0.024, 0.024, 0.02), c.dot); // whisker dots
+    if (asleep) for (const k of [-1, 1]) gb.add(SHAPE.box, M(sx * 0.285 + k * 0.034 * 0.76, 0.565, -0.762 + sx * k * 0.034 * 0.64, 0.09, 0.03, 0.03, 0, -sx * 0.7, k * 0.5), c.dark);
+    else gb.add(SHAPE.sph, M(sx * 0.285, 0.57, -0.765, 0.086, 0.086, 0.06, 0, -sx * 0.7, 0), c.dark);             // small wide-set eyes
+    gb.add(SHAPE.sph, M(sx * 0.56, 0.065, -0.06, 0.62, 0.11, 0.36, 0, sx * -0.5, sx * -0.06), c.flip);        // front flippers, flat on the ground and swept back
+    for (const k of [-1, 0, 1]) gb.add(SHAPE.box, M(sx * 0.62, 0.118, -0.02 + k * 0.085, 0.34, 0.014, 0.022, 0, sx * -(0.5 + k * 0.14), 0), c.muzzle);
+    gb.add(SHAPE.sph, M(sx * 0.13, 0.1, 1.02, 0.22, 0.1, 0.44, 0, sx * 0.34, 0), c.flip);                     // tail flippers
+  }
+  for (const [x, y, z, r] of [[0.13, 0.786, 0.14, -0.3], [-0.1, 0.765, 0.31, 0.25], [0.07, 0.725, 0.44, -0.15]]) gb.add(SHAPE.sph, M(x, y, z, 0.15, 0.03, 0.11, 0.25, 0.4, r), c.spot); // spots on the back
+  return gb.build();
+}
+
+// The orca, nose towards -Z, about 4 m long. part: 'body', 'tail' (the piece that beats), or 'all' in one for the ones that only glide by.
+function orcaGeo(part) {
+  const gb = new GeoBuilder(), c = ORCA;
+  if (part !== 'tail') {
+    gb.add(SHAPE.sphHi, M(0, 0, -0.25, 1.75, 1.5, 3.1), c.black);                                             // one big blunt lozenge
+    gb.add(SHAPE.sphHi, M(0, -0.2, -0.55, 1.62, 1.22, 2.55), c.white);                                        // white chin and belly showing through underneath
+    gb.add(taperTube([v3(0, 0.02, 0.7), v3(0, 0.05, 1.0), v3(0, 0.07, 1.3)], 6, 0.6, 0.36, 12), IDENT, c.black);
+    gb.add(SHAPE.sph, M(0, 0.07, 1.3, 0.72, 0.72, 0.5), c.black);
+    gb.add(SHAPE.sph, M(0, 0.74, 0.12, 0.17, 1.0, 0.66, 0.5, 0, 0), c.black);                                  // rounded fin, leaning back
+    for (const sx of [-1, 1]) {
+      gb.add(SHAPE.sph, M(sx * 0.726, 0.27, -0.95, 0.1, 0.5, 0.7, 0, sx * 0.3, sx * 0.46), c.white);            // the big white eye patch …
+      gb.add(SHAPE.sph, M(sx * 0.772, 0.29, -0.98, 0.06, 0.09, 0.09, 0, sx * 0.3, sx * 0.46), c.pupil);        // … with a dot of an eye in the middle
+      gb.add(SHAPE.sph, M(sx * 0.845, -0.1, 0.1, 0.09, 0.74, 0.42, 0.5, 0, sx * -0.12), c.white);              // white flash on the flank
+      gb.add(SHAPE.sph, M(sx * 0.98, -0.52, -0.5, 0.95, 0.15, 0.52, 0, sx * -0.45, sx * -0.5), c.black);       // paddle flippers, swept back
+    }
+  }
+  if (part !== 'body') {
+    const z0 = part === 'tail' ? -1.3 : 0; // the tail piece is built around its hinge
+    gb.add(taperTube([v3(0, 0.07, 1.3 + z0), v3(0, 0.09, 1.6 + z0), v3(0, 0.1, 1.9 + z0)], 6, 0.36, 0.16, 10), IDENT, c.black);
+    gb.add(SHAPE.sph, M(0, 0.1, 1.92 + z0, 0.34, 0.2, 0.34), c.black);
+    for (const sx of [-1, 1]) gb.add(SHAPE.sph, M(sx * 0.4, 0.1, 2.08 + z0, 0.9, 0.13, 0.5, 0, sx * -0.45, 0), c.black); // flukes
+  }
+  return gb.build();
+}
+// A loose school of little fish, all heading towards -Z. One mesh, so a whole school costs a single draw.
+function fishGeo(cols) {
+  const gb = new GeoBuilder(), rng = makeRng(cols[0]);
+  for (let i = 0; i < 10; i++) {
+    const x = rng.range(-1.2, 1.2), y = rng.range(-0.75, 0.75), z = rng.range(-1.5, 1.5), s = rng.range(0.8, 1.3), c = cols[i % cols.length];
+    gb.add(SHAPE.sphLo, M(x, y, z, 0.16 * s, 0.3 * s, 0.52 * s), c);
+    gb.add(SHAPE.cone4, M(x, y, z + 0.37 * s, 0.05 * s, 0.26 * s, 0.26 * s, -Math.PI / 2, 0, 0), shade(c, 0.78)); // tail fin
+    gb.add(SHAPE.box, M(x, y, z - 0.05 * s, 0.17 * s, 0.3 * s, 0.07 * s), 0xffffff);                              // one white band
+    for (const sx of [-1, 1]) gb.add(SHAPE.sphLo, M(x + sx * 0.065 * s, y + 0.05 * s, z - 0.17 * s, 0.04 * s, 0.05 * s, 0.05 * s), 0x1f1410);
+  }
+  return gb.build();
+}
+// Ink outline geometry that a GeoBuilder can also merge (it needs normals).
+function inkOf(geo, t) { const g = outlineOf(geo, t); g.setAttribute('normal', geo.attributes.normal); return g; }
+function seaGeo() { // built the first time the tide comes in
+  if (!GEO.sealNap) {
+    GEO.sealNap = sealGeo(true); GEO.sealNapInk = inkOf(GEO.sealNap, 0.03);
+    GEO.seal = sealGeo(false); GEO.sealInk = inkOf(GEO.seal, 0.03);
+    GEO.orca = orcaGeo('all'); GEO.orcaInk = inkOf(GEO.orca, 0.04);
+    GEO.fishA = fishGeo([0xff8a3c, 0xffb347, 0xff6f61]); GEO.fishB = fishGeo([0xffe066, 0x5fd4f2, 0x7ae0c4]);
+  }
+  return GEO;
+}
+const sharedMesh = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.userData.sharedGeo = true; return m; };
+
+// The orca that takes over from the boulder under water: it swims after you, and if it catches you, you get booped.
+class Orca {
+  constructor() {
+    this.group = new THREE.Group(); this.group.visible = false;
+    const swim = this.swim = new THREE.Group(); swim.position.set(0, 1.0, 0.3); this.group.add(swim);
+    const body = orcaGeo('body'), tail = orcaGeo('tail');
+    const b = new THREE.Mesh(body, MAT.char); b.add(new THREE.Mesh(outlineOf(body, 0.04), MAT.inkDark)); swim.add(b);
+    this.tail = new THREE.Group(); this.tail.position.set(0, 0, 1.3); swim.add(this.tail);
+    const tm = new THREE.Mesh(tail, MAT.char); tm.add(new THREE.Mesh(outlineOf(tail, 0.04), MAT.inkDark)); this.tail.add(tm);
+    this.shadow = sharedMesh(GEO.disc, MAT.shadow);
+    this.shadow.scale.set(2.4, 1, 4.2); this.shadow.position.set(0, 0.03, 0.3); this.shadow.renderOrder = 2;
+    this.group.add(this.shadow);
+    this.ph = 0; this.wig = 0;
+  }
+  // v: how fast it is moving (m/s). glee: 0…1 after a boop, when it wriggles with delight.
+  update(dt, t, v, glee) {
+    this.ph += dt * (4.2 + Math.min(v, 30) * 0.22);
+    const s = Math.sin(this.ph), g = glee || 0;
+    this.tail.rotation.x = s * 0.42;
+    this.swim.rotation.x = Math.sin(this.ph - 1.1) * 0.07 - g * 0.25;
+    this.swim.rotation.z = Math.sin(t * 1.3) * 0.05 + g * Math.sin(t * 13) * 0.22;
+    this.swim.position.y = 1.0 + Math.sin(t * 1.9) * 0.1 + g * 0.5;
+  }
+}
+
+// Seals, orcas and schools of fish that only swim about for the look of the thing. They belong to a stretch of track and loop for ever.
+class Swimmer {
+  constructor(kind, o) {
+    const G = seaGeo(), orca = kind === 'orca';
+    if (kind === 'fish') this.obj = sharedMesh(o.alt ? G.fishB : G.fishA, MAT.char); // too small to need an outline
+    else {
+      this.obj = sharedMesh(orca ? G.orca : G.seal, MAT.char);
+      this.obj.add(sharedMesh(orca ? G.orcaInk : G.sealInk, orca ? MAT.inkDark : MAT.ink));
+    }
+    Object.assign(this, { kind, cx: 0, cy: 3, cz: 0, rx: 3, rz: 3, w: 0.8, ph: 0, bob: 0.5, size: 1, roll: 0 }, o);
+    this.obj.scale.setScalar(this.size);
+  }
+  update(t) {
+    const a = t * this.w + this.ph, c = Math.cos(a), s = Math.sin(a), o = this.obj;
+    o.position.set(this.cx + c * this.rx, this.cy + Math.sin(a * 1.7 + this.ph) * this.bob, this.cz + s * this.rz);
+    const vx = -s * this.rx * this.w, vz = c * this.rz * this.w;                 // heading follows the way it is going
+    o.rotation.set(Math.cos(a * 1.7 + this.ph) * 0.16, Math.atan2(-vx, -vz), Math.sin(a * 2.3) * 0.14 + (this.roll ? Math.max(0, Math.sin(a * 0.5)) ** 8 * TAU : 0), 'YXZ');
+  }
+}
+
 // ───────────────────────── scenery pieces (all merged into one mesh per stretch of track) ─────────────────────────
-const ENV = {
+const ENV_LAND = {
   slab: [0xecd9ad, 0xe4cf9e, 0xf2e2ba, 0xdec796], slabMoss: 0xbdd28c, base: 0xa58d6c, baseDark: 0x8d7658,
   curb: 0xd9c08e, curb2: 0xcdb27e, stone: 0x93a9b5, stone2: 0x7f96a3, stone3: 0xa7bac4, stoneWarm: 0xcdb891, stoneWarm2: 0xbfa77f,
   moss: 0x5fb85a, leaf: [0x3fbf6b, 0x2fa35a, 0x58d17f, 0x249a55], trunk: [0xb98a5a, 0xa8794a],
@@ -1255,6 +1446,14 @@ const ENV = {
   flower: [0xff6fa5, 0xffe45c, 0xffffff, 0xff9a3c], gold: 0xffd23f, dark: 0x241c18, carve: 0x33424c, flame: 0xff8a1f, flame2: 0xffe066,
   cloth: [0xef5f2b, 0x10b3ae, 0xffd23f],
 };
+// The same ruins once the tide is in: weed for moss, coral for flowers, pearls for torch flames.
+const ENV_SEA = Object.assign({}, ENV_LAND, {
+  slab: [0xe8ddb8, 0xdfd3a9, 0xeee5c4, 0xd8cca1], slabMoss: 0x93d9b6, base: 0x9d9073, baseDark: 0x867b61, curb: 0xd4c998, curb2: 0xc8bc8a,
+  moss: 0x3fc49c, leaf: [0x2fbf8f, 0x1f9f7a, 0x52d9a6, 0x178f6c], flower: [0xff7fb0, 0xffb347, 0xfff07a, 0xffffff], foam: 0xe9e0bd, sand: 0xeedfae,
+  flame: 0x7df0ff, flame2: 0xeaffff, coral: [0xff7a8a, 0xff9e5e, 0xf06fb4, 0xffd166, 0xb48cf0], sea: true,
+});
+let ENV = ENV_LAND; // whichever of the two the stretch being built belongs to
+let DECOR = null;    // sea life is collected apart from the stonework, so it can stay out of sight until the water arrives
 const WATER_BASE = WATER_Y - 1;
 
 function addFoam(gb, x, z, w, d) { gb.add(SHAPE.cyl, M(x, WATER_Y + 0.05, z, w, 0.08, d === undefined ? w : d), ENV.foam); }
@@ -1313,7 +1512,7 @@ function addColumn(gb, rng, x, z, top) {
   if (rng.chance(0.5)) {
     gb.add(SHAPE.cyl, M(x, top + 0.18, z, r * 1.35, 0.4, r * 1.35), ENV.stone3);
     gb.add(SHAPE.cyl, M(x, top + 0.44, z, r * 1.38, 0.14, r * 1.38), ENV.moss);
-    if (rng.chance(0.5)) addBush(gb, rng, x, top + 0.45, z, 0.8);
+    if (rng.chance(0.5)) (ENV.sea ? addCoral : addBush)(gb, rng, x, top + 0.45, z, 0.8);
   } else { // snapped off
     gb.add(SHAPE.cyl, M(x + 0.12, top + 0.25, z, r * 0.9, 0.7, r * 0.9, 0.22, rng.f() * 3, 0.18), col);
     gb.add(SHAPE.ico, M(x - 0.2, top + 0.12, z + 0.2, r * 0.9, 0.3, r * 0.9), ENV.moss);
@@ -1380,6 +1579,11 @@ function addIdol(gb, glow, rng, x, z, baseY, face, scale) {
 
 function addTorch(gb, glow, x, y, z) {
   gb.add(SHAPE.taper, M(x, y + 0.16, z, 0.62, 0.32, 0.62, Math.PI, 0, 0), 0x6b5a4a);
+  if (ENV.sea) { // no flame under water: a glowing pearl sits in the bowl instead
+    glow.add(SHAPE.sph, M(x, y + 0.58, z, 0.6, 0.6, 0.6), ENV.flame);
+    glow.add(SHAPE.sph, M(x - 0.08, y + 0.66, z + 0.2, 0.26, 0.26, 0.2), ENV.flame2);
+    return;
+  }
   glow.add(SHAPE.cone, M(x, y + 0.72, z, 0.44, 0.9, 0.44), ENV.flame);
   glow.add(SHAPE.cone, M(x, y + 0.6, z, 0.26, 0.56, 0.26), ENV.flame2);
 }
@@ -1454,26 +1658,113 @@ function addTower(gb, glow, rng, x, z) {
   gb.add(SHAPE.ico, M(x, top + 0.55, z, 3, 0.5, 3), ENV.moss);
   addVines(gb, rng, x, top, z + 2.34, 7, 2.8, 0.02, 4);
   addFoam(gb, x, z, 8, 6.4);
+  if (ENV.sea) { addKelp(gb, rng, x + 2.2, top + 0.3, z - 0.5, rng.range(4, 6)); addCoral(gb, rng, x - 1.8, top + 2.2, z, 1.3); return; }
   addPalm(gb, rng, x + 2.2, top + 0.3, z - 0.5, rng.range(3.5, 5));
   addBush(gb, rng, x - 1.8, top + 2.2, z, 1.2);
+}
+
+// ───────────────────────── under the sea ─────────────────────────
+// Kelp: flat ribbons that zig-zag up towards the light. They are built broadside to the path, so you always see the wiggle.
+function addKelp(gb, rng, x, y, z, h) {
+  gb = DECOR || gb;
+  const n = rng.int(2, 4);
+  for (let i = 0; i < n; i++) {
+    let px = x + rng.range(-0.55, 0.55), py = y - 0.1, pz = z + rng.range(-0.55, 0.55), side = rng.chance(0.5) ? 1 : -1;
+    const hh = h * rng.range(0.55, 1), segs = Math.max(3, Math.round(hh / 1.15)), sh = hh / segs, col = rng.pick(ENV.leaf), col2 = rng.pick(ENV.leaf);
+    for (let k = 0; k < segs; k++) {
+      const lean = side * rng.range(0.26, 0.4); side = -side;
+      _v.set(Math.sin(lean), Math.cos(lean), rng.range(-0.1, 0.1)).normalize();
+      gb.add(SHAPE.box, Mdir(px, py, pz, _v, lerp(0.44, 0.2, k / segs), sh * 1.1, 0.07), k % 2 ? col : col2);
+      px += _v.x * sh; py += _v.y * sh; pz += _v.z * sh;
+      if (k < segs - 1 && rng.chance(0.6)) gb.add(SHAPE.cone4, M(px - side * 0.2, py, pz, 0.62, 0.3, 0.08, 0, 0, -side * 1.1), col); // a blade at the bend
+    }
+    gb.add(SHAPE.cone4, M(px, py + 0.2, pz, 0.26, 0.5, 0.07), col);
+  }
+}
+
+// Coral in four shapes: a branching bush, a brain, a fan and a clump of tubes.
+function addCoral(gb, rng, x, y, z, s) {
+  gb = DECOR || gb;
+  const kind = rng.weighted([[3, 'branch'], [2, 'brain'], [1.6, 'fan'], [2, 'tubes']]), col = rng.pick(ENV.coral), tip = rng.pick(ENV.coral);
+  if (kind === 'brain') {
+    gb.add(SHAPE.ico1, M(x, y + 0.26 * s, z, 1.3 * s, 0.9 * s, 1.3 * s, 0, rng.f() * 3, 0), col);
+    for (let i = 0; i < 4; i++) gb.add(SHAPE.ico, M(x + rng.range(-0.34, 0.34) * s, y + 0.62 * s, z + rng.range(-0.34, 0.34) * s, 0.3 * s, 0.2 * s, 0.3 * s, 0, rng.f() * 3, 0), tip);
+  } else if (kind === 'fan') {
+    gb.add(SHAPE.box, M(x, y + 0.3 * s, z, 0.14 * s, 0.6 * s, 0.14 * s), tip);
+    gb.add(SHAPE.cyl, M(x, y + 1.15 * s, z, 1.7 * s, 0.09 * s, 1.5 * s, Math.PI / 2, rng.range(-0.4, 0.4), 0), col);
+    for (let i = -2; i <= 2; i++) gb.add(SHAPE.box, M(x + i * 0.28 * s, y + (1.2 + (2 - Math.abs(i)) * 0.06) * s, z, 0.05 * s, (1.3 - Math.abs(i) * 0.26) * s, 0.12 * s, 0, 0, -i * 0.16), tip); // ribs
+  } else if (kind === 'tubes') {
+    const n = rng.int(3, 5);
+    for (let i = 0; i < n; i++) {
+      const a = rng.f() * TAU, r = i ? rng.range(0.2, 0.42) * s : 0, hh = rng.range(0.5, 1.3) * s, w = rng.range(0.24, 0.38) * s;
+      gb.add(SHAPE.cyl, M(x + Math.cos(a) * r, y + hh / 2, z + Math.sin(a) * r, w, hh, w), col);
+      gb.add(SHAPE.cyl, M(x + Math.cos(a) * r, y + hh + 0.01, z + Math.sin(a) * r, w * 0.62, 0.04, w * 0.62), 0x5a2a4a);
+    }
+  } else {
+    const limb = (bx, by, bz, dx, dy, dz, len, w, depth) => { // each limb forks into two thinner ones and ends in a knob
+      const d = new THREE.Vector3(dx, dy, dz).normalize();
+      gb.add(SHAPE.taper, Mdir(bx, by, bz, d, w, len), col);
+      const ex = bx + d.x * len, ey = by + d.y * len, ez = bz + d.z * len;
+      if (depth === 0) { gb.add(SHAPE.ico, M(ex, ey, ez, w * 1.7, w * 1.7, w * 1.7), tip); return; }
+      for (const k of [-1, 1]) limb(ex, ey, ez, d.x + k * rng.range(0.4, 0.75), d.y, d.z + rng.range(-0.5, 0.5), len * 0.7, w * 0.72, depth - 1);
+    };
+    for (const k of [-1, 0, 1]) limb(x + k * 0.12 * s, y - 0.05, z, k * 0.45 + rng.range(-0.15, 0.15), 1, rng.range(-0.3, 0.3), rng.range(0.5, 0.75) * s, 0.2 * s, 2);
+  }
+}
+
+function addStarfish(gb, rng, x, y, z, s) {
+  gb = DECOR || gb;
+  const col = rng.pick([0xff8a5c, 0xff6f91, 0xffc857]), a0 = rng.f() * TAU;
+  gb.add(SHAPE.cyl, M(x, y + 0.05 * s, z, 0.34 * s, 0.1 * s, 0.34 * s), col);
+  for (let i = 0; i < 5; i++) { const a = a0 + (i / 5) * TAU; _v.set(Math.cos(a), 0.05, Math.sin(a)).normalize(); gb.add(SHAPE.cone4, Mdir(x, y + 0.05 * s, z, _v, 0.24 * s, 0.5 * s, 0.11 * s), col); }
+}
+
+// A clam with its lid up and a pearl inside.
+function addClam(gb, glow, rng, x, y, z, s) {
+  gb = DECOR || gb;
+  const yaw = rng.range(-0.8, 0.8), c = Math.cos(yaw), sn = Math.sin(yaw), col = rng.pick([0xf7d9e3, 0xe8c9f0, 0xfbe3c2]);
+  gb.add(SHAPE.sph, M(x, y + 0.12 * s, z, 1.0 * s, 0.34 * s, 0.82 * s, 0, yaw, 0), col);
+  gb.add(SHAPE.sph, M(x + sn * 0.2 * s, y + 0.5 * s, z + c * 0.2 * s, 1.0 * s, 0.3 * s, 0.82 * s, -0.75, yaw, 0), col);
+  gb.add(SHAPE.sph, M(x - sn * 0.06 * s, y + 0.3 * s, z - c * 0.06 * s, 0.26 * s, 0.26 * s, 0.26 * s), 0xffffff);
+}
+
+// A reef: a rock stack with a sandy top where coral and kelp have taken hold. Returns the height of its top.
+function addReef(gb, glow, rng, x, z, R, top) {
+  gb.add(SHAPE.rock, M(x, (top + WATER_BASE) / 2 - 0.2, z, R * 2, top - WATER_BASE, R * 2, 0, rng.f() * 3, 0), rng.pick(ENV.rock));
+  gb.add(SHAPE.cyl, M(x, top - 0.12, z, R * 2.1, 0.4, R * 2.1, 0, rng.f() * 3, 0), ENV.sand);
+  const n = rng.int(3, 5);
+  for (let i = 0; i < n; i++) addCoral(gb, rng, x + rng.range(-0.66, 0.66) * R, top + 0.06, z + rng.range(-0.66, 0.66) * R, rng.range(0.8, 1.6));
+  if (rng.chance(0.7)) addKelp(gb, rng, x + rng.range(-0.5, 0.5) * R, top, z + rng.range(-0.5, 0.5) * R, rng.range(3, 6.5));
+  if (rng.chance(0.55)) addStarfish(gb, rng, x + rng.range(-0.7, 0.7) * R, top + 0.08, z + rng.range(-0.7, 0.7) * R, rng.range(0.8, 1.3));
+  if (rng.chance(0.35)) addClam(gb, glow, rng, x + rng.range(-0.5, 0.5) * R, top + 0.08, z + R * 0.5, rng.range(0.7, 1.0));
+  return top;
+}
+
+// A stand of giant kelp growing all the way up from the sea bed.
+function addKelpForest(gb, rng, x, z) {
+  const n = rng.int(3, 5);
+  for (let i = 0; i < n; i++) addKelp(gb, rng, x + rng.range(-2.6, 2.6), WATER_Y, z + rng.range(-2.6, 2.6), rng.range(8.5, 13.5));
+  gb.add(SHAPE.ico, M(x, WATER_Y + 0.3, z, 3.4, 1.2, 3.4, 0, rng.f() * 3, 0), rng.pick(ENV.rock));
 }
 
 // ───────────────────────── the endless track ─────────────────────────
 // The path is a tree of straight stretches joined by square junctions. Each stretch knows its
 // obstacles, holes, bananas and pick-ups in its own (s = distance along, x = sideways) coordinates.
 let SEG_ID = 0;
+const SEA_LIFE_Y = -2.5; // once the tide is this high, the sea life of a High Tide stretch is shown
 
 class Seg {
   constructor(parent, turn) {
     this.id = SEG_ID++;
     this.parent = parent; this.turn = turn;
-    if (!parent) { this.heading = 0; this.ox = 0; this.oz = 0; this.dist0 = 0; this.first = true; }
+    if (!parent) { this.heading = 0; this.ox = 0; this.oz = 0; this.dist0 = 0; this.first = true; this.depth = Seg.startDepth || 0; }
     else {
       this.heading = turn === 'R' ? (parent.heading + 1) % 4 : (parent.heading + 3) % 4;
       const d = DIRS[parent.heading];
       this.ox = parent.ox + d.fx * parent.len; this.oz = parent.oz + d.fz * parent.len;
-      this.dist0 = parent.dist0 + parent.len; this.first = false;
+      this.dist0 = parent.dist0 + parent.len; this.first = false; this.depth = parent.depth + 1;
     }
+    this.level = levelOf(this.depth); this.sea = isSea(this.level);
     this.dir = DIRS[this.heading]; this.yaw = yawOf(this.heading);
     this.obstacles = []; this.holes = []; this.holeCells = new Set(); this.bananas = []; this.pickups = [];
     this.kids = { L: null, R: null };
@@ -1489,7 +1780,11 @@ class Seg {
 
 // ── layout: decide what goes where on a stretch ──
 function genSegment(seg, W) {
-  const rng = W.rng, v = speedAt(seg.dist0), lvl = seg.dist0 / 450;
+  const rng = W.rng, L = seg.level, v = levelSpeed(L);
+  const prog = seg.depth / LEVEL_STRETCHES;                  // 0 at the start, 1 where level 2 begins, …
+  const hard = Math.min(4, Math.pow(1.22, L - 1));           // how far the tricky patterns outweigh the simple ones
+  const tight = Math.max(0.78, Math.pow(0.975, L - 1));      // two-part patterns close up a little each level too
+  const dZig = Math.max(v * 0.62 * tight, 9), dLogBeam = Math.max(v * tight, 12), dBeamLog = Math.max(v * 0.95 * tight, 12);
   seg.v = v;
   const tutorial = seg.first && W.tutorial;
   seg.jt = seg.heading === 0 ? rng.weighted([[1, 'L'], [1, 'R'], [0.85, 'T']]) : seg.heading === 1 ? 'L' : 'R';
@@ -1531,7 +1826,7 @@ function genSegment(seg, W) {
     beam(s) { addBeam(s); line(s - 3.8, s + 3.8, rng.int(0, 2), 0.5); return 1; },
     beamPillar(s) { addBeam(s); const lane = rng.int(0, 2); addPillar(s, lane); line(s - 5.7, s + 3.8, rng.pick(others(lane)), 0.5); return 1.3; },
     gap(s) {
-      const rows = v < 15 ? 1 : v < 20.5 ? 2 : 3, k = rowOf(s);
+      const rows = v < 15 ? 1 : v < 20.5 ? 2 : v < 26 ? 3 : 4, k = rowOf(s);
       if (k + rows + 2 >= seg.nRows) return -1;
       addHole(k, rows, [0, 1, 2]);
       arc(rowS(k) + (rows * ROW) / 2, rng.int(0, 2));
@@ -1540,7 +1835,7 @@ function genSegment(seg, W) {
     narrow(s) {
       const rows = clamp(Math.round((v * rng.range(0.75, 1.05)) / ROW), 4, 7), k = rowOf(s);
       if (k + rows + 2 >= seg.nRows) return -1;
-      const mode = rng.weighted([[lvl > 3 ? 2 : 1, 'one'], [1.4, 'two'], [1, 'split']]);
+      const mode = rng.weighted([[L > 4 ? 2 : 1, 'one'], [1.4, 'two'], [1, 'split']]);
       let gone, keep;
       if (mode === 'one') { keep = rng.int(0, 2); gone = others(keep); }
       else if (mode === 'two') { const g = rng.pick([0, 2]); gone = [g]; keep = rng.pick(others(g)); }
@@ -1550,14 +1845,14 @@ function genSegment(seg, W) {
       return rowS(k + rows) - s;
     },
     zig(s) {
-      const a = rng.int(0, 2), b = a === 1 ? rng.pick([0, 2]) : 1, d = Math.max(v * 0.62, 9);
+      const a = rng.int(0, 2), b = a === 1 ? rng.pick([0, 2]) : 1, d = dZig;
       for (const l of others(a)) addPillar(s, l);
       for (const l of others(b)) addPillar(s + d, l);
       line(s - 5.7, s, a); line(s + d - 3.8, s + d + 1.9, b);
       return d + 1.3;
     },
-    logBeam(s) { const d = Math.max(v, 12), lane = rng.int(0, 2); addLog(s, 0, 2); addBeam(s + d); arc(s, lane); line(s + d - 3.8, s + d + 1.9, lane, 0.5); return d + 1; },
-    beamLog(s) { const d = Math.max(v * 0.95, 12), lane = rng.int(0, 2); addBeam(s); addLog(s + d, 0, 2); line(s - 3.8, s + 1.9, lane, 0.5); arc(s + d, lane); return d + 1; },
+    logBeam(s) { const d = dLogBeam, lane = rng.int(0, 2); addLog(s, 0, 2); addBeam(s + d); arc(s, lane); line(s + d - 3.8, s + d + 1.9, lane, 0.5); return d + 1; },
+    beamLog(s) { const d = dBeamLog, lane = rng.int(0, 2); addBeam(s); addLog(s + d, 0, 2); line(s - 3.8, s + 1.9, lane, 0.5); arc(s + d, lane); return d + 1; },
     rubble(s) {
       const a = rng.int(0, 2), two = rng.chance(0.45), b = two ? rng.pick(others(a)) : -1;
       addRubble(s, a); if (two) addRubble(s, b);
@@ -1576,7 +1871,7 @@ function genSegment(seg, W) {
       return ss - s - 1.9;
     },
   };
-  const need = { pillars1: 1.3, pillars2: 1.3, log: 1, beam: 1, beamPillar: 1.3, gap: 4 * ROW, narrow: 8 * ROW, zig: Math.max(v * 0.62, 9) + 1.3, logBeam: Math.max(v, 12) + 1, beamLog: Math.max(v, 12) + 1, rubble: 1.2, mixed: 1.3, bananas: 21 };
+  const need = { pillars1: 1.3, pillars2: 1.3, log: 1, beam: 1, beamPillar: 1.3, gap: 5 * ROW, narrow: 8 * ROW, zig: dZig + 1.3, logBeam: dLogBeam + 1, beamLog: dBeamLog + 1, rubble: 1.2, mixed: 1.3, bananas: 21 };
 
   if (tutorial) { // a gentle opening that teaches one move at a time
     line(7.6, 22.8, 1);
@@ -1588,14 +1883,15 @@ function genSegment(seg, W) {
     let s = seg.first ? 30 : seg.floorStart + Math.max(11, v * 0.95);
     if (seg.first) line(7.6, 19, 1);
     const end = seg.len - HJ - Math.max(11, v * 0.8);
-    const tGap = lerp(1.3, 0.9, clamp(lvl / 9, 0, 1));
+    const tGap = levelGap(L);
+    const hop = seg.sea ? 1.5 : 1; // under water the things to hop over are seals, so there are more of them
     let last = '';
     while (s < end - 2) {
-      const on = (min, w) => (lvl >= min ? w : 0);
+      const on = (min, w) => (prog >= min ? w : 0);
       const table = [
-        [3, 'pillars1'], [lvl > 0.4 ? 2.3 : 0.7, 'pillars2'], [3, 'log'], [2.5, 'beam'], [1, 'bananas'],
-        [on(0.45, 2.3), 'gap'], [on(0.8, 1.6), 'rubble'], [on(1.2, 1.6), 'mixed'], [on(1.5, 1.3), 'beamPillar'],
-        [on(1.5, 1.8), 'narrow'], [on(1.8, 1.8), 'zig'], [on(2.2, 1.5), 'logBeam'], [on(2.2, 1.3), 'beamLog'],
+        [3, 'pillars1'], [prog >= 0.5 ? 2.3 : 0.7, 'pillars2'], [3 * hop, 'log'], [2.5, 'beam'], [1 / hard, 'bananas'],
+        [on(0.5, 2.3), 'gap'], [on(0.75, 1.6), 'rubble'], [on(1, 1.6 * hard * hop), 'mixed'], [on(1.75, 1.3 * hard), 'beamPillar'],
+        [on(2, 1.8 * hard), 'narrow'], [on(2.25, 1.8 * hard), 'zig'], [on(2.75, 1.5 * hard * hop), 'logBeam'], [on(2.75, 1.3 * hard * hop), 'beamLog'],
       ];
       let name = rng.weighted(table);
       if (name === last) name = rng.weighted(table);
@@ -1643,6 +1939,18 @@ function addLogMesh(ob, ol, rng, xc, z, len) {
   for (let i = 0; i < bands; i++) ob.add(SHAPE.cyl12, M(xc + (i - (bands - 1) / 2) * len * 0.3 + rng.range(-0.15, 0.15), r, z, 2 * r + 0.03, 0.16, 2 * r + 0.03, 0, 0, rz), ENV.woodDark);
   ob.add(SHAPE.cone4, M(xc + rng.range(-0.3, 0.3) * len, 2 * r + 0.16, z, 0.4, 0.5, 0.1, 0, rng.f() * 3, 0.5), ENV.leaf[0]);
 }
+// Under water, what lies across the path is a row of napping seals: one to a lane, nose to tail.
+function addSeals(ob, ol, rng, xc, z, len) {
+  const G = seaGeo(), n = Math.max(1, Math.round(len / 1.84)), step = len / n, k = 0.92;
+  let face = rng.chance(0.5) ? 1 : -1;
+  for (let i = 0; i < n; i++) {
+    const x = xc + (i - (n - 1) / 2) * step - face * 0.135 * k; // the model's middle sits a little behind its origin
+    const yaw = (face * Math.PI) / 2 + rng.range(-0.09, 0.09), dz = rng.range(-0.07, 0.07);
+    ob.add(G.sealNap, M(x, 0, z + dz, k, k, k, 0, yaw, 0));
+    ol.add(G.sealNapInk, M(x, 0, z + dz, k, k, k, 0, yaw, 0));
+    if (rng.chance(0.7)) face = -face;
+  }
+}
 function addRubbleMesh(ob, ol, rng, x, z) {
   const rocks = [[-0.42, 0.24, 0.1, 0.86, 0.56, 0.74], [0.36, 0.2, -0.12, 0.74, 0.48, 0.7], [0.02, 0.36, 0.0, 0.6, 0.5, 0.6]];
   for (const [dx, y, dz, sx, sy, sz] of rocks) {
@@ -1677,6 +1985,11 @@ function addChevron(glow, cx, cy, z, dir) { // ">" for dir=+1, "<" for dir=-1
 function buildSegment(seg, W) {
   const rng = makeRng((W.seed ^ Math.imul(seg.id + 1, 0x9E3779B1)) >>> 0); // scenery dice, separate from layout dice
   const gb = new GeoBuilder(), ob = new GeoBuilder(), ol = new GeoBuilder(false), glow = new GeoBuilder();
+  const sea = seg.sea;
+  const gs = new GeoBuilder();     // sea life: shown only while the water is up
+  ENV = sea ? ENV_SEA : ENV_LAND; // a High Tide stretch is dressed in weed and coral
+  DECOR = sea ? gs : null;
+  if (sea) seaGeo();
   const group = seg.group = new THREE.Group();
   group.position.set(seg.ox, 0, seg.oz); group.rotation.y = seg.yaw;
   const hole = (k, l) => seg.holeCells.has(k * 3 + l);
@@ -1698,6 +2011,8 @@ function buildSegment(seg, W) {
       if (hole(k, side < 0 ? 0 : 2)) continue;
       gb.add(SHAPE.box, M(side * (FLOOR_HALF + CURB_W / 2), -0.1, z, CURB_W, 0.64, ROW - 0.05), k % 2 ? ENV.curb : ENV.curb2);
       if (rng.chance(0.15)) gb.add(SHAPE.ico, M(side * (FLOOR_HALF + 0.2), 0.27, z + rng.range(-0.8, 0.8), 0.52, 0.34, 0.52, 0, rng.f() * 3, 0), rng.pick(ENV.leaf));
+      else if (sea && rng.chance(0.07)) addStarfish(gb, rng, side * (FLOOR_HALF + CURB_W / 2), 0.22, z + rng.range(-0.8, 0.8), 0.7);
+      else if (sea && rng.chance(0.09)) addCoral(gb, rng, side * (FLOOR_HALF + CURB_W * 0.8), 0.2, z + rng.range(-0.8, 0.8), rng.range(0.36, 0.55)); // a little coral has taken to the kerb
     }
     if (cells === 3 && k % 5 === 2) { // a pier down into the water
       gb.add(SHAPE.box, M(0, -1.45, z, 5.0, 0.6, 2.2), ENV.baseDark);
@@ -1736,7 +2051,7 @@ function buildSegment(seg, W) {
   for (const o of seg.obstacles) {
     const a = ob.n, b = ol.n, c = glow.n, z = -o.s;
     if (o.type === 'pillar') addTotem(ob, ol, glow, laneX(o.lane), z);
-    else if (o.type === 'log') addLogMesh(ob, ol, rng, (laneX(o.l0) + laneX(o.l1)) / 2, z, (o.l1 - o.l0) * LANE_W + 1.72);
+    else if (o.type === 'log') { (sea ? addSeals : addLogMesh)(ob, ol, rng, (laneX(o.l0) + laneX(o.l1)) / 2, z, (o.l1 - o.l0) * LANE_W + 1.72); if (sea) o.skin = 'seal'; }
     else if (o.type === 'rubble') addRubbleMesh(ob, ol, rng, laneX(o.lane), z);
     else if (o.type === 'beam') addBeamMesh(ob, ol, glow, rng, z);
     o.rOb = [a, ob.n]; o.rOl = [b, ol.n]; o.rGl = [c, glow.n];
@@ -1745,17 +2060,22 @@ function buildSegment(seg, W) {
   // scenery beside the path
   const d0 = seg.first ? seg.floorStart + 6 : HJ + 13, d1 = seg.len - HJ - 13;
   let sa = d0 + rng.range(10, 30);
-  while (sa < d1) { addArch(gb, glow, rng, -sa); sa += rng.range(40, 66); }
+  const arches = [], posts = []; // remembered so the swimmers can keep clear of them
+  while (sa < d1) { addArch(gb, glow, rng, -sa); arches.push(sa); sa += rng.range(40, 66); }
   for (const side of [-1, 1]) {
     let s = d0 + rng.range(0, 7);
     while (s < d1) {
-      const kind = rng.weighted([[3, 'island'], [2.2, 'column'], [0.8, 'idol'], [1.1, 'tree'], [1.2, 'rocks']]);
+      const kind = rng.weighted(sea ? [[3, 'reef'], [1.9, 'column'], [0.7, 'idol'], [1.5, 'kelp'], [1, 'rocks']] : [[3, 'island'], [2.2, 'column'], [0.8, 'idol'], [1.1, 'tree'], [1.2, 'rocks']]);
       const z = -s;
-      if (kind === 'island') { const R = rng.range(1.8, 3.3); addIsland(gb, rng, side * (HJ + 1.5 + R + rng.range(0, 5)), z, R, rng.range(-1.2, 0.9), true); }
-      else if (kind === 'column') addColumn(gb, rng, side * (HJ + 1.6 + rng.range(0, 6.5)), z, rng.range(1.2, 7.5));
+      if (kind === 'reef') {
+        const R = rng.range(1.8, 3.3), x = side * (HJ + 1.5 + R + rng.range(0, 5)), top = addReef(gb, glow, rng, x, z, R, rng.range(-1.2, 0.9));
+        if (rng.chance(0.3)) gs.add(GEO.seal, M(x - side * R * 0.35, top + 0.06, z - R * 0.2, 0.95, 0.95, 0.95, 0, side * rng.range(0.9, 2.0), 0)); // one hauled out for a rest, watching you go by
+      } else if (kind === 'kelp') addKelpForest(gb, rng, side * (HJ + 5.5 + rng.range(0, 7)), z);
+      else if (kind === 'island') { const R = rng.range(1.8, 3.3); addIsland(gb, rng, side * (HJ + 1.5 + R + rng.range(0, 5)), z, R, rng.range(-1.2, 0.9), true); }
+      else if (kind === 'column') { const x = side * (HJ + 1.6 + rng.range(0, 6.5)), top = rng.range(1.2, 7.5); addColumn(gb, rng, x, z, top); posts.push({ x, s, top }); }
       else if (kind === 'idol') { const x = side * (HJ + 2.3); gb.add(SHAPE.box, M(x, (0.1 + WATER_BASE) / 2, z, 2.1, 0.1 - WATER_BASE, 2.1), ENV.baseDark); addFoam(gb, x, z, 3.4); addIdol(gb, glow, rng, x, z, 0.1, { x: -side * 0.8, z: 0.6 }, 1); }
       else if (kind === 'tree') addBigTree(gb, rng, side * (HJ + 7 + rng.range(0, 5)), z);
-      else addRocks(gb, rng, side * (HJ + 3 + rng.range(0, 8)), z);
+      else { const x = side * (HJ + 3 + rng.range(0, 8)); addRocks(gb, rng, x, z); if (sea) addKelp(gb, rng, x + rng.range(-1, 1), WATER_Y + 0.6, z + rng.range(-1, 1), rng.range(5, 9)); }
       s += rng.range(7, 14);
     }
   }
@@ -1766,12 +2086,31 @@ function buildSegment(seg, W) {
   seg.olMesh = new THREE.Mesh(ol.build(), MAT.ink);
   seg.glMesh = new THREE.Mesh(glow.build(), MAT.glow);
   group.add(env, seg.obMesh, seg.olMesh, seg.glMesh);
+  if (sea) { seg.seaMesh = new THREE.Mesh(gs.build(), MAT.env); seg.seaMesh.visible = Tide.y > SEA_LIFE_Y; group.add(seg.seaMesh); }
 
   for (const p of seg.pickups) {
     const sp = new THREE.Sprite(W.pickupMat[p.kind]);
     sp.position.set(p.x, p.y, -p.s); sp.scale.set(1.5, 1.5, 1);
     p.sprite = sp; group.add(sp);
   }
+
+  // company for a High Tide stretch: an orca wheeling high over the path, and seals looping round the far columns
+  seg.critters = [];
+  if (sea) {
+    if (d1 - d0 > 34) {
+      let sc = rng.range(d0 + 10, d1 - 10);
+      for (let i = 0; i < 6 && arches.some((a) => Math.abs(a - sc) < 11); i++) sc = rng.range(d0 + 10, d1 - 10); // not through a gateway
+      seg.critters.push(new Swimmer('orca', { cx: 0, cy: rng.range(6.4, 7.3), cz: -sc, rx: rng.range(17, 24), rz: rng.range(4, 6), w: rng.range(0.34, 0.46) * (rng.chance(0.5) ? 1 : -1), ph: rng.f() * TAU, bob: 0.6 }));
+    }
+    const far = posts.filter((p) => Math.abs(p.x) > 7).slice(0, 3);
+    for (const p of far) seg.critters.push(new Swimmer('seal', { cx: p.x, cy: clamp(p.top - 1, 1.6, 4.2), cz: -p.s, rx: 2.5, rz: 2.5, w: rng.range(0.8, 1.15) * (rng.chance(0.5) ? 1 : -1), ph: rng.f() * TAU, bob: 0.45, size: rng.range(0.85, 1.05), roll: rng.chance(0.5) }));
+    for (let i = 0; i < 2; i++) { // and a couple of schools of fish milling about beside it
+      const side = rng.chance(0.5) ? 1 : -1, r = rng.range(2.6, 4.2);
+      seg.critters.push(new Swimmer('fish', { alt: i === 1, cx: side * (HJ + 2.2 + r + rng.range(0, 4)), cy: rng.range(1.8, 4.6), cz: -rng.range(d0, d1), rx: r, rz: r * rng.range(1, 1.8), w: rng.range(0.5, 0.8) * (rng.chance(0.5) ? 1 : -1), ph: rng.f() * TAU, bob: 0.5, size: rng.range(0.9, 1.3) }));
+    }
+    for (const c of seg.critters) { c.update(0); c.obj.visible = Tide.y > SEA_LIFE_Y; group.add(c.obj); }
+  }
+  ENV = ENV_LAND; DECOR = null;
 }
 
 // ── the world keeps the tree of stretches alive around the player ──
@@ -1796,7 +2135,7 @@ class World {
     if (this.first) this._disposeTree(this.root_seg());
     this.queue.length = 0; this.tutorial = !!tutorial;
     this.seed = seed >>> 0; this.rng = makeRng(this.seed);
-    this.nextPickupAt = 170; this.skyOn = false;
+    this.nextPickupAt = 170; this.skyOn = false; this.wet = false;
     this.first = this.cur = this._make(null, null);
     this.prev = null;
     this.ensureAhead();
@@ -1852,6 +2191,12 @@ class World {
     this.ensureAhead();
     return next;
   }
+  showSeaLife(seg, on, n) {
+    if (!seg || seg.dead || n > 2) return;
+    if (seg.seaMesh) seg.seaMesh.visible = on;
+    if (seg.critters) for (const c of seg.critters) c.obj.visible = on;
+    this.showSeaLife(seg.kids.L, on, n + 1); this.showSeaLife(seg.kids.R, on, n + 1);
+  }
   // A trail of bananas in the air for the rocket to fly through.
   addSky(seg, from) {
     if (!seg || seg.dead || seg.sky) return;
@@ -1884,7 +2229,8 @@ class World {
     // bananas: one instanced draw for every banana in view
     const arr = this.nanas.instanceMatrix.array, cap = this.cap;
     let n = 0;
-    const segs = [this.prev, this.cur, this.cur.kids.L, this.cur.kids.R];
+    const segs = [this.prev, this.cur, this.cur.kids.L, this.cur.kids.R], wet = Tide.y > SEA_LIFE_Y;
+    if (wet !== this.wet) { this.wet = wet; this.showSeaLife(this.prev, wet, 0); this.showSeaLife(this.cur, wet, 0); } // coral and company appear as the water reaches them
     for (const seg of segs) {
       if (!seg || seg.dead) continue;
       for (const b of seg.bananas) {
@@ -1898,6 +2244,7 @@ class World {
         arr[o + 12] = x; arr[o + 13] = y; arr[o + 14] = z; arr[o + 15] = 1;
         n++;
       }
+      if (seg.critters) for (const c of seg.critters) c.update(t);
       for (const p of seg.pickups) if (p.sprite && !p.got) { p.sprite.position.y = p.y + Math.sin(t * 3.2 + p.s) * 0.14; const k = 1.5 + Math.sin(t * 6 + p.s) * 0.07; p.sprite.scale.set(k, k, 1); }
     }
     this.nanas.count = n; this.nanaInk.count = n;
@@ -1954,14 +2301,17 @@ function makePickupMaterials() {
 }
 
 // ───────────────────────── sky, light, water and far scenery ─────────────────────────
-// The time of day drifts as you run: bright morning → sunset → moonlit night → dawn → …
+// The time of day moves on as you climb the levels: bright morning → sunset → moonlit night → dawn → …
+// `sea` is how bright the water is at that hour, for when the tide comes in.
 const BIOMES = [
-  { top: 0x2f9bf0, hor: 0xbfeeff, fog: 0xc8eef9, water: 0x21bfc4, sun: 0xfff6dc, sunI: 0.56, sky: 0xf2fbff, gnd: 0xa9c095, hemiI: 0.5, cloud: 0xffffff, mtn: 0x9fd6dc, disc: 0xfff4c2, star: 0 },
-  { top: 0x6a4fc4, hor: 0xffb37a, fog: 0xffc49a, water: 0x6f74d4, sun: 0xffc08a, sunI: 0.56, sky: 0xffe0cc, gnd: 0x9a7f9c, hemiI: 0.5, cloud: 0xffd2b4, mtn: 0xd697a4, disc: 0xffd27a, star: 0.12 },
-  { top: 0x0a1040, hor: 0x2c4a9c, fog: 0x26418c, water: 0x15307f, sun: 0xb4ccff, sunI: 0.46, sky: 0x86a6f2, gnd: 0x3a4c86, hemiI: 0.58, cloud: 0x5a74c8, mtn: 0x1d2f73, disc: 0xf2f6ff, star: 1 },
-  { top: 0x5fa0f0, hor: 0xffd6e6, fog: 0xf9dce6, water: 0x4cc4d0, sun: 0xffe6cc, sunI: 0.56, sky: 0xfff2f6, gnd: 0xa8b89c, hemiI: 0.5, cloud: 0xffe8ee, mtn: 0xb8a8d6, disc: 0xffe9b0, star: 0 },
+  { top: 0x2f9bf0, hor: 0xbfeeff, fog: 0xc8eef9, water: 0x21bfc4, sun: 0xfff6dc, sunI: 0.56, sky: 0xf2fbff, gnd: 0xa9c095, hemiI: 0.5, cloud: 0xffffff, mtn: 0x9fd6dc, disc: 0xfff4c2, star: 0, sea: 1 },
+  { top: 0x6a4fc4, hor: 0xffb37a, fog: 0xffc49a, water: 0x6f74d4, sun: 0xffc08a, sunI: 0.56, sky: 0xffe0cc, gnd: 0x9a7f9c, hemiI: 0.5, cloud: 0xffd2b4, mtn: 0xd697a4, disc: 0xffd27a, star: 0.12, sea: 0.88 },
+  { top: 0x0a1040, hor: 0x2c4a9c, fog: 0x26418c, water: 0x15307f, sun: 0xb4ccff, sunI: 0.46, sky: 0x86a6f2, gnd: 0x3a4c86, hemiI: 0.58, cloud: 0x5a74c8, mtn: 0x1d2f73, disc: 0xf2f6ff, star: 1, sea: 0.6 },
+  { top: 0x5fa0f0, hor: 0xffd6e6, fog: 0xf9dce6, water: 0x4cc4d0, sun: 0xffe6cc, sunI: 0.56, sky: 0xfff2f6, gnd: 0xa8b89c, hemiI: 0.5, cloud: 0xffe8ee, mtn: 0xb8a8d6, disc: 0xffe9b0, star: 0, sea: 0.94 },
 ];
-const BIOME_SPAN = 700;
+// What everything looks like once the tide has closed over your head.
+const SEA = { top: 0x9af0e4, hor: 0x3fb0c8, fog: 0x2e9ab6, bed: 0xd8c99a, sun: 0xf2fdff, sunI: 0.52, sky: 0xe4f9ff, gnd: 0x8ac8d2, hemiI: 0.56, surf: 0x66dbe0 }; // the light stays near white so the cast keep their own colours
+const TIDE_TOP = 15; // how far above the path the water stands at high tide
 
 class Sky {
   constructor(scene) {
@@ -2026,9 +2376,15 @@ class Sky {
     this.cloudMat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false });
     this.clouds = new THREE.Mesh(cg, this.cloudMat); this.far.add(this.clouds);
 
+    // the lagoon far below the path; at high tide the same plane reads as the sandy sea bed
     this.waterMat = new THREE.MeshBasicMaterial({ color: 0x21bfc4 });
     this.water = new THREE.Mesh(new THREE.PlaneGeometry(2600, 2600).rotateX(-Math.PI / 2), this.waterMat);
     this.water.position.y = WATER_Y; scene.add(this.water);
+
+    // the tide's surface: a sheet of water that climbs over the path and then hangs overhead
+    this.surfMat = new THREE.MeshBasicMaterial({ color: SEA.surf, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false });
+    this.surf = new THREE.Mesh(this.water.geometry, this.surfMat);
+    this.surf.renderOrder = 3; this.surf.visible = false; scene.add(this.surf);
 
     // streaks of light on the water: they give the height and the speed something to slide against
     this.nGl = 80; this.glSpan = 190;
@@ -2037,40 +2393,67 @@ class Sky {
     this.gl = [];
     for (let i = 0; i < this.nGl; i++) this.gl.push({ x: rng.range(0, this.glSpan), z: rng.range(0, this.glSpan), len: rng.range(2, 6), w: rng.range(0.16, 0.3), ph: rng.range(0, TAU), ry: rng.range(-0.3, 0.3) });
 
-    this.cur = {}; this._a = new THREE.Color(); this._b = new THREE.Color();
-    this.setBiome(0);
+    // shafts of light slanting down through the water (only there while you are under it)
+    const sc = document.createElement('canvas'); sc.width = 32; sc.height = 128;
+    const s2 = sc.getContext('2d'), gv = s2.createLinearGradient(0, 0, 0, 128), gh = s2.createLinearGradient(0, 0, 32, 0);
+    gv.addColorStop(0, 'rgba(255,255,255,1)'); gv.addColorStop(0.55, 'rgba(255,255,255,0.45)'); gv.addColorStop(1, 'rgba(255,255,255,0)');
+    s2.fillStyle = gv; s2.fillRect(0, 0, 32, 128);
+    gh.addColorStop(0, 'rgba(0,0,0,0)'); gh.addColorStop(0.5, 'rgba(0,0,0,1)'); gh.addColorStop(1, 'rgba(0,0,0,0)');
+    s2.globalCompositeOperation = 'destination-in'; s2.fillStyle = gh; s2.fillRect(0, 0, 32, 128);
+    this.nSh = 10; this.shSpan = 76;
+    this.shaftMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), color: 0xd2fdff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    this.shafts = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).translate(0, -0.5, 0), this.shaftMat, this.nSh);
+    this.shafts.frustumCulled = false; this.shafts.renderOrder = 4; this.shafts.visible = false; scene.add(this.shafts);
+    this.sh = [];
+    for (let i = 0; i < this.nSh; i++) this.sh.push({ x: rng.range(0, this.shSpan), z: rng.range(0, this.shSpan), w: rng.range(2.4, 5.2), ph: rng.range(0, TAU), tilt: rng.range(0.14, 0.34) });
+
+    this._a = new THREE.Color(); this._b = new THREE.Color(); this._s = new THREE.Color();
+    this.sub = 0; this.sunBase = 0.56;
+    this.setLook(0, 0);
   }
 
   _mix(key, a, b, t) { return this._a.setHex(a[key]).lerp(this._b.setHex(b[key]), t); }
-  setBiome(dist) {
-    const p = Math.max(0, dist) / BIOME_SPAN, i = Math.floor(p) % 4, f = p - Math.floor(p);
-    const a = BIOMES[i], b = BIOMES[(i + 1) % 4], t = smooth((f - 0.6) / 0.4);
-    this.domeMat.uniforms.uTop.value.copy(this._mix('top', a, b, t));
-    this.domeMat.uniforms.uHor.value.copy(this._mix('hor', a, b, t));
-    this.domeMat.uniforms.uFog.value.copy(this._mix('fog', a, b, t));
+  // p: the time of day (0 morning, 1 sunset, 2 night, 3 dawn; in between they blend). sub: 0 above the water … 1 under it.
+  setLook(p, sub) {
+    const q = ((p % 4) + 4) % 4, i = Math.floor(q) % 4, t = smooth(q - Math.floor(q)), a = BIOMES[i], b = BIOMES[(i + 1) % 4];
+    const u = clamp(sub || 0, 0, 1), dim = lerp(a.sea, b.sea, t);
+    const mix = (key, sea) => { const c = this._mix(key, a, b, t); return u > 0 ? c.lerp(this._s.setHex(sea).multiplyScalar(dim), u) : c; };
+    this.domeMat.uniforms.uTop.value.copy(mix('top', SEA.top));
+    this.domeMat.uniforms.uHor.value.copy(mix('hor', SEA.hor));
+    this.domeMat.uniforms.uFog.value.copy(mix('fog', SEA.fog));
     this.scene.fog.color.copy(this._a);
-    this.waterMat.color.copy(this._mix('water', a, b, t));
-    this.sun.color.copy(this._mix('sun', a, b, t)); this.sun.intensity = lerp(a.sunI, b.sunI, t);
-    this.hemi.color.copy(this._mix('sky', a, b, t)); this.hemi.groundColor.copy(this._mix('gnd', a, b, t)); this.hemi.intensity = lerp(a.hemiI, b.hemiI, t);
+    this.scene.fog.near = lerp(42, 9, u); this.scene.fog.far = lerp(168, 94, u);
+    this.waterMat.color.copy(mix('water', SEA.bed));
+    this.sun.color.copy(mix('sun', SEA.sun)); this.sunBase = lerp(lerp(a.sunI, b.sunI, t), SEA.sunI, u); this.sun.intensity = this.sunBase;
+    this.hemi.color.copy(mix('sky', SEA.sky)); this.hemi.groundColor.copy(mix('gnd', SEA.gnd)); this.hemi.intensity = lerp(lerp(a.hemiI, b.hemiI, t), SEA.hemiI, u);
     this.cloudMat.color.copy(this._mix('cloud', a, b, t));
     this.mtnMat.color.copy(this._mix('mtn', a, b, t));
     this.disc.material.color.copy(this._mix('disc', a, b, t));
-    this.stars.material.opacity = lerp(a.star, b.star, t);
+    this.stars.material.opacity = lerp(a.star, b.star, t) * (1 - u);
     this.stars.visible = this.stars.material.opacity > 0.01;
+    this.far.visible = this.disc.visible = u < 0.5; // hills, clouds and the sun stay above the surface
+    this.surfMat.color.setHex(SEA.surf).multiplyScalar(dim * dim); // the sheet of water is as bright as the hour allows
+    this.dim = dim;
+    this.shaftMat.opacity = 0.2 * u * dim;
+    this.sub = u;
   }
 
-  update(dt, t, cam) {
-    const p = cam.position;
+  update(dt, t, cam, tideY) {
+    const p = cam.position, u = this.sub;
     this.dome.position.copy(p); this.stars.position.copy(p);
     this.far.position.set(p.x, 0, p.z);
     this.clouds.rotation.y += dt * 0.004;
     this.water.position.set(p.x, WATER_Y, p.z);
+    const risen = tideY > WATER_Y + 0.05;
+    this.surf.visible = risen;
+    if (risen) { this.surf.position.set(p.x, tideY, p.z); this.surfMat.opacity = lerp(0.6, 0.4, u); }
     this.disc.position.copy(p).addScaledVector(this.sunDir, 800);
     // key light always comes from over the camera's left shoulder, so whatever you look at reads clearly
     cam.getWorldDirection(_v); _v.y = 0; _v.normalize();
     this.sun.target.position.copy(p).addScaledVector(_v, 8);
     this.sun.position.set(p.x - _v.x * 6 + _v.z * 4.5, p.y + 9, p.z - _v.z * 6 - _v.x * 4.5);
-    // water glints wrap around the camera
+    if (u > 0) this.sun.intensity = this.sunBase * (1 + 0.06 * u * Math.sin(t * 2.7)); // light wobbling down through the swell
+    // water glints wrap around the camera (on the sea bed they pass for ripples of light)
     const span = this.glSpan, half = span / 2, arr = this.glints.instanceMatrix.array;
     for (let i = 0; i < this.nGl; i++) {
       const g = this.gl[i];
@@ -2082,6 +2465,19 @@ class Sky {
       arr[o + 12] = x; arr[o + 13] = WATER_Y + 0.04; arr[o + 14] = z; arr[o + 15] = 1;
     }
     this.glints.instanceMatrix.needsUpdate = true;
+    // light shafts hang from the surface and turn to face the camera
+    const on = u > 0.02 && risen;
+    this.shafts.visible = on;
+    if (on) {
+      const sp2 = this.shSpan, h2 = sp2 / 2, h = Math.max(4, tideY + 3);
+      for (let i = 0; i < this.nSh; i++) {
+        const s = this.sh[i];
+        const x = p.x + ((((s.x - p.x) % sp2) + sp2) % sp2) - h2, z = p.z + ((((s.z - p.z) % sp2) + sp2) % sp2) - h2;
+        const w = s.w * (0.75 + 0.25 * Math.sin(t * 0.7 + s.ph));
+        this.shafts.setMatrixAt(i, M(x, tideY, z, w, h, 1, 0, Math.atan2(p.x - x, p.z - z), s.tilt));
+      }
+      this.shafts.instanceMatrix.needsUpdate = true;
+    }
   }
 }
 
@@ -2105,7 +2501,8 @@ class FX {
         'void main(){ vCol = aCol; vAlpha = aAlpha; vKind = aKind; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * uScale / max(0.1, -mv.z); gl_Position = projectionMatrix * mv; }',
       fragmentShader: 'varying vec3 vCol; varying float vAlpha; varying float vKind;' +
         'void main(){ vec2 c = gl_PointCoord - 0.5; float d = length(c); float a;' +
-        ' if (vKind > 0.5) { a = smoothstep(0.016, 0.004, abs(c.x) * abs(c.y)) * smoothstep(0.5, 0.34, d); } else { a = smoothstep(0.5, 0.43, d); }' +
+        ' if (vKind > 1.5) { a = smoothstep(0.5, 0.45, d) * (0.26 + 0.74 * smoothstep(0.27, 0.41, d)); a = max(a, 0.95 * smoothstep(0.13, 0.06, length(c + vec2(0.17, 0.17)))); }' + // a bubble: bright rim, faint middle, one highlight
+        ' else if (vKind > 0.5) { a = smoothstep(0.016, 0.004, abs(c.x) * abs(c.y)) * smoothstep(0.5, 0.34, d); } else { a = smoothstep(0.5, 0.43, d); }' +
         ' if (a * vAlpha < 0.02) discard; gl_FragColor = vec4(vCol, a * vAlpha); }',
       transparent: true, depthWrite: false,
     });
@@ -2133,6 +2530,13 @@ class FX {
     for (let i = 0; i < n; i++) this.spawn(x + (Math.random() - 0.5) * 1.2, y + Math.random() * 2, z + (Math.random() - 0.5) * 0.8,
       (Math.random() - 0.5) * 9, 2 + Math.random() * 6, (Math.random() - 0.5) * 9, hex, 0.26 + Math.random() * 0.4, 0.7 + Math.random() * 0.4, 20, 0, 0, 1);
   }
+  // Bubbles wobble upwards and swell a little as they go.
+  bubbles(x, y, z, n, spread, scale) {
+    const sp = spread || 0.3, k = scale || 1;
+    for (let i = 0; i < n; i++) this.spawn(x + (Math.random() - 0.5) * sp, y + (Math.random() - 0.5) * sp, z + (Math.random() - 0.5) * sp,
+      (Math.random() - 0.5) * 0.7, 1.1 + Math.random() * 1.5, (Math.random() - 0.5) * 0.7, 0xeaffff, (0.12 + Math.random() * 0.2) * k, 1.1 + Math.random() * 1.1, -1.6, 0.45, 2, 0.9);
+  }
+  clear() { this.life.fill(0); this.size.fill(0); this.geo.attributes.aSize.needsUpdate = true; } // a new run starts with clean air
   splash(x, z) {
     for (let i = 0; i < 26; i++) { const a = Math.random() * TAU, r = 1 + Math.random() * 3.5; this.spawn(x, WATER_Y + 0.1, z, Math.cos(a) * r, 5 + Math.random() * 7, Math.sin(a) * r, i % 3 ? 0xffffff : 0xa9f0f2, 0.3 + Math.random() * 0.5, 0.8 + Math.random() * 0.5, 17, 0, 0, 0.95); }
     for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU; this.spawn(x + Math.cos(a) * 0.5, WATER_Y + 0.12, z + Math.sin(a) * 0.5, Math.cos(a) * 3.2, 0.1, Math.sin(a) * 3.2, 0xffffff, 0.7, 0.9, 0, 1.2, 0, 0.8); }
@@ -2155,8 +2559,8 @@ class FX {
 }
 
 // ───────────────────────── game: save data, camera, player, rules ─────────────────────────
-let renderer, scene, camera, world, sky, monkey, boulder, fx;
-const _look = new THREE.Vector3();
+let renderer, scene, camera, world, sky, monkey, boulder, orca, fx;
+const _look = new THREE.Vector3(), _nose = new THREE.Vector3();
 const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* not available */ } };
 
 const Save = {
@@ -2188,6 +2592,32 @@ const Save = {
 };
 
 const powerTime = (k) => POWERS[k].t[Save.data.up[k] - 1];
+
+// The tide. At 0 the lagoon lies far below the path; at 1 the ruins are deep under water.
+const Tide = {
+  u: 0, aim: 0, y: WATER_Y, sub: 0, wet: false, under: false,
+  reset() { this.u = 0; this.aim = 0; this.y = WATER_Y; this.sub = 0; this.wet = false; this.under = false; },
+  // The water starts to rise one stretch before a High Tide level, and drains away once you are past the level.
+  follow(seg) { const a = seg.sea || isSea(levelOf(seg.depth + 1)) ? 1 : 0, turned = a !== this.aim; this.aim = a; return turned; },
+  height(u) { // fast up to the path, slow enough across it to watch the flood, then away overhead
+    if (u <= 0) return WATER_Y;
+    if (u < 0.34) { const k = u / 0.34; return WATER_Y + (-0.5 - WATER_Y) * (1.345 * k - 0.345 * k * k); }
+    if (u < 0.8) return -0.5 + 5.3 * ((u - 0.34) / 0.46);
+    if (u < 1) { const k = (u - 0.8) / 0.2; return 4.8 + (TIDE_TOP - 4.8) * (0.226 * k + 0.774 * k * k); }
+    return TIDE_TOP;
+  },
+  // Returns 'under' or 'out' on the frame the surface crosses the camera.
+  update(dt, camY) {
+    if (this.u !== this.aim) { const d = dt / 2.9; this.u = this.aim > this.u ? Math.min(this.aim, this.u + d) : Math.max(this.aim, this.u - d); }
+    this.y = this.height(this.u);
+    this.sub = clamp(this.y - camY + 0.5, 0, 1); // 0 with the surface below the camera, 1 once it has closed overhead
+    this.wet = this.y > 1.3;                      // deep enough that he is swimming rather than wading
+    const now = this.sub > 0.5;
+    if (now === this.under) return null;
+    this.under = now;
+    return now ? 'under' : 'out';
+  },
+};
 
 // Camera: orbits a smoothed follow point. a = orbit angle (0 = behind Monkey Jones, π = in front).
 const Cam = {
@@ -2296,12 +2726,16 @@ const Player = {
   startSlide() { this.slide = SLIDE_T; this.slideOnLand = false; monkey.bounce(0.84); Sound.sfx.slide(); fx.dust(this.wx, 0, this.wz, 5); },
   tryTurn() {
     const seg = this.seg, L = seg.len, dir = this.turnQ;
-    if (!dir || this.s < L - LANE_W - 0.45) return false;
+    if (!dir) return false;
+    // Each lane turns on the junction's diagonal, so you come out of a corner in the lane you went in on:
+    // the inside lane turns first and the outside lane runs a little further before it does.
+    const pivot = L + (dir === 'R' ? -1 : 1) * this.lane * LANE_W;
+    if (this.s < pivot) return false;
     const child = seg.kids[dir];
     if (!child || !child.group) return false;
     const ns = dir === 'R' ? this.x : -this.x, nx = dir === 'R' ? L - this.s : this.s - L;
     this.seg = world.enter(dir);
-    this.s = ns; this.x = nx; this.lane = clamp(Math.round(nx / LANE_W), -1, 1); this.turnQ = null;
+    this.s = ns; this.x = nx; this.turnQ = null; // the lane is kept; a late swipe just eases him back across to it
     this.lean = dir === 'R' ? -0.5 : 0.5;
     Sound.sfx.turn(); Game.onTurn();
     return true;
@@ -2330,7 +2764,7 @@ const Player = {
     let left = run.speed * dt;
     while (left > 0 && !this.dead) { // small steps, so nothing is skipped at speed
       const step = Math.min(left, 0.4); left -= step; this.s += step;
-      if (this.flying && !this.turnQ && this.s > this.seg.len - 0.8) this.turnQ = this.seg.jt === 'T' ? (Math.random() < 0.5 ? 'L' : 'R') : this.seg.jt; // the rocket steers itself round corners
+      if (this.flying && !this.turnQ && this.s > this.seg.len - LANE_W - 0.6) this.turnQ = this.seg.jt === 'T' ? (Math.random() < 0.5 ? 'L' : 'R') : this.seg.jt; // the rocket steers itself round corners
       if (this.turnQ) this.tryTurn();
       if (!this.flying) this.collide();
     }
@@ -2386,13 +2820,13 @@ const HINTS = [
 
 const Game = {
   state: 'title', time: 0, run: null, death: null, introT: 0, introLen: 1.75, quick: false,
-  bGap: 15, bPos: new THREE.Vector3(), bSnap: true, bYaw: 0, camFrom: null, camTo: null, bS0: -31, scared: false, hintOn: -1,
+  bGap: 15, bPos: new THREE.Vector3(), bSnap: true, bYaw: 0, camFrom: null, camTo: null, bS0: -31, scared: false, hintOn: -1, skyP: 0, seaK: 0, bubT: 0,
 
   blankRun() {
-    return { dist: 0, score: 0, nanas: 0, mult: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
+    return { dist: 0, score: 0, nanas: 0, mult: 1, level: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
       magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1 } };
   },
-  closeGap() { return Cam.portrait ? 4.6 : 4.9; },
+  closeGap() { return Tide.wet ? 3.2 : Cam.portrait ? 4.6 : 4.9; }, // the orca is lower than the boulder, so it comes in closer to be seen
 
   // ── screens ──
   toTitle() {
@@ -2403,7 +2837,7 @@ const Game = {
     monkey.holdBanana(true);
     boulder.group.visible = false; this.bGap = 15;
     Cam.lookAt = null; Cam.fovKick = 0; Cam.snap(Cam.preset('title'));
-    sky.setBiome(0);
+    this.dryLand();
     Sound.muffle(true); Sound.rumble(0);
     UI.setState('title'); UI.refreshTitle(); UI.hint(null); UI.danger(false);
     this.frameTitle(0, true);
@@ -2412,6 +2846,8 @@ const Game = {
     if (this.state !== 'title' && !quick) return;
     Roster.use(Save.data.char); // in case the character screen was showing someone else
     this.run = this.blankRun(); this.death = null;
+    this.run.level = world.cur.level; this.run.mult = Math.min(10, this.run.level);
+    this.skyP = landIndex(this.run.level); Tide.follow(world.cur);
     this.state = 'intro'; this.quick = !!quick; this.introT = 0; this.introLen = quick ? 1.0 : 1.8; this.scared = false; this.hintOn = -1;
     monkey.holdBanana(false); monkey.setExpr('normal');
     boulder.group.visible = true; this.bS0 = quick ? -15 : -31; this.bGap = Player.s - this.bS0; this.bSnap = true;
@@ -2426,9 +2862,14 @@ const Game = {
     world.reset((Math.random() * 4294967295) >>> 0, Save.data.runs < 2);
     Player.reset(world.cur);
     Roster.use(Save.data.char); monkey.fresh(); Sound.jet(0);
-    Cam.lookAt = null; Cam.fovKick = 0; sky.setBiome(0); UI.hint(null); UI.danger(false);
+    Cam.lookAt = null; Cam.fovKick = 0; this.dryLand(); UI.hint(null); UI.danger(false);
     this.state = 'title';
     this.startIntro(true);
+  },
+  // Back above water in the morning light: the state every run starts from.
+  dryLand() {
+    this.skyP = 0; this.seaK = 0; Tide.reset(); sky.setLook(0, 0); fx.clear();
+    orca.group.visible = false; Sound.sea(false); UI.sea(false);
   },
   pause() { if (this.state !== 'run' && this.state !== 'count') return; this.state = 'pause'; UI.setState('pause'); UI.stopCount(); Sound.sleep(); },
   resume() {
@@ -2442,9 +2883,14 @@ const Game = {
 
   // ── rules ──
   onTurn() {
-    const run = this.run; run.turns++;
-    if (Player.flying) for (const t of ['L', 'R']) if (Player.seg.kids[t]) world.addSky(Player.seg.kids[t], HJ + 6);
+    const run = this.run, seg = Player.seg; run.turns++;
+    if (Player.flying) for (const t of ['L', 'R']) if (seg.kids[t]) world.addSky(seg.kids[t], HJ + 6);
     if (this.hintOn >= 0) { UI.hint(null); this.hintOn = -1; }
+    if (seg.level > run.level) { // every corner that starts a new level: faster, tighter, and worth more
+      run.level = seg.level; run.mult = Math.min(10, run.level);
+      UI.levelUp(run.level); Sound.sfx.level();
+    }
+    if (Tide.follow(seg)) { Sound.sfx.tide(Tide.aim > 0); if (Tide.aim > 0) UI.toast('Here comes the tide!'); }
   },
   stumble(o) {
     const run = this.run, P = Player;
@@ -2454,7 +2900,9 @@ const Game = {
     run.danger = 5.5; run.slow = 0.45; run.invuln = 0.75; P.stumbleT = 0;
     monkey.setExpr('squint', 0.75); Sound.sfx.stumble(); Cam.kick(0.55); buzz(40);
     fx.dust(P.wx, 0.1, P.wz, 7);
-    if (o && o.type !== 'pillar') fx.debris(P.wx, 0.1, P.wz, 5, o.type === 'log' ? ENV.wood : 0x9aa3a8);
+    if (Tide.wet) Sound.sfx.orca(); // somewhere behind, something has noticed
+    if (o && o.skin === 'seal') { Sound.sfx.seal(); fx.bubbles(P.wx, 0.7, P.wz, 8, 1.1); } // a rude awakening
+    else if (o && o.type !== 'pillar') fx.debris(P.wx, 0.1, P.wz, 5, o.type === 'log' ? ENV.wood : 0x9aa3a8);
   },
   hitSolid(o) {
     const run = this.run, P = Player;
@@ -2515,12 +2963,10 @@ const Game = {
   updateRun(dt) {
     const run = this.run, P = Player;
     if (run.slow > 0) run.slow -= dt;
-    run.speed = damp(run.speed, speedAt(run.dist) * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), 5, dt);
+    run.speed = damp(run.speed, levelSpeed(run.level) * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), 5, dt);
     P.update(dt);
     if (P.dead) return;
     run.dist += run.speed * dt;
-    const m = Math.min(10, 1 + Math.floor(run.dist / 300));
-    if (m > run.mult) { run.mult = m; UI.toast('Score ×' + m); }
     run.score += run.speed * dt * run.mult * (run.dbl > 0 ? 2 : 1);
     if (run.danger > 0) run.danger -= dt;
     if (run.invuln > 0) run.invuln -= dt;
@@ -2556,7 +3002,8 @@ const Game = {
       const d = P.seg.dir, back = run.speed - 7; // flames trail a little way behind him, not all the way to the camera
       for (let i = 0; i < 2; i++) {
         monkey.nozzles[i].getWorldPosition(_look);
-        fx.spawn(_look.x, _look.y, _look.z, d.fx * back + (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, d.fz * back + (Math.random() - 0.5) * 1.2, Math.random() < 0.5 ? 0xff8a1f : 0xffe066, 0.3, 0.12 + Math.random() * 0.08, 0, -0.8, 0, 0.95);
+        if (Tide.wet) { if (Math.random() < 0.4) fx.bubbles(_look.x, _look.y, _look.z, 1, 0.25, 0.6); } // under water the rocket leaves a wake of bubbles
+        else fx.spawn(_look.x, _look.y, _look.z, d.fx * back + (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, d.fz * back + (Math.random() - 0.5) * 1.2, Math.random() < 0.5 ? 0xff8a1f : 0xffe066, 0.3, 0.12 + Math.random() * 0.08, 0, -0.8, 0, 0.95);
       }
     }
     this.bGap = damp(this.bGap, run.danger > 0 ? this.closeGap() : 15, run.danger > 0 ? 7 : 1.1, dt);
@@ -2579,11 +3026,12 @@ const Game = {
     for (const k in this.camTo) { Cam.c[k] = lerp(this.camFrom[k], this.camTo[k], cu); Cam.t[k] = Cam.c[k]; }
     Cam.c.ahead = Cam.t.ahead = this.camTo.ahead * cu * cu * cu; // keep him in frame while the camera swings round
     Cam.kick(0.12);
-    if (t >= T && !P.dead) { this.state = 'run'; run.danger = 1.5; UI.setState('run'); }
+    if (t >= T && !P.dead) { this.state = 'run'; run.danger = 1.5; UI.setState('run'); UI.levelUp(run.level); }
   },
 
   kill(type) {
     const P = Player;
+    if (Tide.wet) type = type === 'fall' ? 'sink' : type === 'flat' ? 'boop' : type; // under water the same mistakes end differently
     this.state = 'dying'; UI.setState('dying'); UI.hint(null); UI.danger(false); Sound.jet(0);
     this.death = { type, t: 0, s0: P.s, y0: Math.max(0, P.y), landed: false, drop: false, splashed: false, ts: 0, squashed: false, tq: 0 };
     P.slide = 0; P.stumbleT = -1; this.hintOn = -1;
@@ -2592,7 +3040,7 @@ const Game = {
       Sound.sfx.bonk(); Cam.kick(1.1); monkey.setExpr('x'); monkey.bounce(0.6); buzz(90);
       fx.sparkle(P.wx, P.y + 1.3, P.wz, 10, 0xffe45c);
       Cam.to(Cam.preset('down'), 2.6);
-    } else if (type === 'fall') {
+    } else if (type === 'fall' || type === 'sink') {
       monkey.setExpr('wide'); P.vy = 0;
       Cam.to(Object.assign(Cam.preset('down'), { a: 0.3, height: 3.6, dist: 5.4 }), 3);
     } else { monkey.setExpr('wide'); Cam.to(Cam.preset('down'), 2.6); }
@@ -2600,6 +3048,7 @@ const Game = {
   updateDying(dt) {
     const d = this.death, P = Player, run = this.run, t = (d.t += dt);
     let mode = 'run';
+    if (d.type !== 'flat' && d.type !== 'boop') this.bGap = damp(this.bGap, 16, 4, dt); // whatever was chasing him drops back out of the picture
     if (d.type === 'bonk') { // bounce back off it and land flat on his back
       const u = clamp(t / 0.6, 0, 1);
       P.s = d.s0 - 2.4 * easeOut(u);
@@ -2617,6 +3066,35 @@ const Game = {
       if (!d.splashed && P.y < WATER_Y + 0.3) { d.splashed = true; d.ts = t; fx.splash(P.wx, P.wz); Sound.sfx.splash(); monkey.root.visible = false; }
       if (d.splashed && t > d.ts + 0.95) this.over();
       Cam.lookAt = _look.set(P.wx, Math.max(P.y, WATER_Y) + 0.6, P.wz);
+    } else if (d.type === 'sink') { // under water he drifts down to the sea bed instead of dropping
+      if (t < 0.34) P.s += run.speed * Math.max(0, 0.3 - t) * dt;
+      else if (!d.landed) {
+        if (!d.drop) { d.drop = true; Sound.sfx.bloop(); }
+        P.vy = Math.max(P.vy - GRAVITY * 0.3 * dt, -6); P.y += P.vy * dt;
+        if (Math.random() < dt * 26) fx.bubbles(P.wx, Math.min(0.4, P.y + 1), P.wz, 1, 0.5);
+        if (P.y < WATER_Y + 0.1) { d.landed = true; P.y = WATER_Y + 0.1; monkey.setExpr('x'); fx.dust(P.wx, WATER_Y + 0.1, P.wz, 12, 0xe9dcb0); }
+      }
+      if (t > 2.0) this.over();
+      mode = d.landed ? 'bonk' : 'fall';
+      Cam.lookAt = _look.set(P.wx, Math.max(P.y, WATER_Y) + 0.6, P.wz);
+    } else if (d.type === 'boop') { // the orca noses him clean off his feet
+      const reach = 1.8;
+      if (!d.squashed) {
+        this.bGap = Math.max(reach, this.bGap - 19 * dt);
+        run.speed = damp(run.speed, 0, 6, dt); P.s += run.speed * dt;
+        if (this.bGap <= reach + 0.01) {
+          const seg = P.seg, next = seg.obstacles.find((o) => !o.gone && o.s1 > P.s), pit = seg.holes.find((h) => h.s1 > P.s);
+          d.fly = clamp(Math.min(next ? next.s0 - P.s - 1.3 : 9, pit ? pit.s0 - P.s - 1 : 9, seg.len + HJ - 1.4 - P.s), 0.6, 7.5); // room to land in
+          d.squashed = true; d.tq = t; d.s1 = P.s; Sound.sfx.boop(); Cam.kick(1.1); monkey.setExpr('x'); buzz(110); fx.bubbles(P.wx, 0.9, P.wz, 16, 1.3);
+        }
+      } else {
+        const u = clamp((t - d.tq) / 0.95, 0, 1);
+        P.s = d.s1 + d.fly * easeOut(u); P.y = Math.sin(Math.PI * u) * 2.7; // up and over in a slow arc, then down on his back
+        this.bGap = damp(this.bGap + (P.s - (d.sp === undefined ? d.s1 : d.sp)), 3.1, 2.6, dt); d.sp = P.s; // the orca noses after him and hovers there, wriggling with glee
+        if (u >= 1 && !d.landed) { d.landed = true; P.y = 0; monkey.bounce(0.72); monkey.stars.visible = true; fx.dust(P.wx, 0, P.wz, 8); Sound.sfx.land(); }
+        if (t > d.tq + 2.1) this.over();
+      }
+      mode = !d.squashed ? 'run' : d.landed ? 'bonk' : 'fall';
     } else { // the boulder catches him
       this.bGap = Math.max(-22, this.bGap - (d.squashed ? 12 : 17) * dt);
       run.speed = damp(run.speed, 0, 9, dt); P.s += run.speed * dt;
@@ -2650,9 +3128,15 @@ const Game = {
     const ox = b.x, oz = b.z;
     b.x = damp(b.x, tx, 16, dt); b.z = damp(b.z, tz, 16, dt);
     this.bYaw = dampAngle(this.bYaw, seg.yaw, 8, dt);
+    const moved = Math.hypot(b.x - ox, b.z - oz), shown = this.bGap < 13.5 && this.state !== 'title';
+    // On land a boulder rolls after him. Under water the orca takes over (if one is in sight at the time, they swap in a blink).
+    const k = this.seaK = damp(this.seaK, Tide.wet ? 1 : 0, 10, dt);
     boulder.group.position.set(b.x, 0, b.z); boulder.group.rotation.y = this.bYaw;
-    boulder.roll(Math.hypot(b.x - ox, b.z - oz));
-    boulder.group.visible = this.bGap < 13.5 && this.state !== 'title';
+    boulder.roll(moved);
+    boulder.group.visible = shown && k < 0.97; boulder.group.scale.setScalar(Math.max(0.01, 1 - k));
+    orca.group.position.set(b.x, 0, b.z); orca.group.rotation.y = this.bYaw;
+    orca.group.visible = shown && k > 0.03; orca.group.scale.setScalar(Math.max(0.01, k));
+    if (orca.group.visible) orca.update(dt, this.time, dt > 0 ? moved / dt : 0, this.death && this.death.type === 'boop' && this.death.squashed ? 1 : 0);
     const near = clamp((13 - Math.abs(this.bGap)) / 9, 0, 1);
     Sound.rumble(this.state === 'over' || this.state === 'title' ? 0 : near * 0.55);
     if (near > 0.55 && (this.state === 'run' || this.state === 'intro')) Cam.kick(0.07 + (near - 0.55) * 0.2);
@@ -2674,13 +3158,13 @@ const Game = {
     this.time += dt;
     const st = this.state, P = Player, run = this.run;
     if (st === 'pause' || st === 'count') return;
-    if (st === 'title') { this.frameTitle(dt, false); world.update(dt, this.time, P.wx, 0, P.wz); fx.update(dt, this.pScale()); sky.update(dt, this.time, camera); return; }
+    if (st === 'title') { this.frameTitle(dt, false); world.update(dt, this.time, P.wx, 0, P.wz); fx.update(dt, this.pScale()); sky.update(dt, this.time, camera, WATER_Y); return; }
 
     let mode = 'run';
     if (st === 'intro') { this.updateIntro(dt); mode = this.introT < (this.quick ? 0 : 0.62) ? 'scare' : 'run'; }
     else if (st === 'run') this.updateRun(dt);
     if (this.state === 'dying') mode = this.updateDying(dt);
-    else if (this.state === 'over') mode = this.death.type === 'bonk' ? 'bonk' : this.death.type === 'flat' ? 'flat' : 'fall';
+    else if (this.state === 'over') mode = this.death.type === 'fall' ? 'fall' : this.death.type === 'flat' ? 'flat' : 'bonk';
     if ((this.state === 'run' || this.state === 'intro') && mode === 'run') mode = P.flying ? 'fly' : P.grounded || P.coyote > 0 ? (P.slide > 0 ? 'slide' : 'run') : 'air';
 
     // Monkey Jones
@@ -2696,12 +3180,35 @@ const Game = {
 
     this.placeBoulder(dt);
     world.update(dt, this.time, P.wx, P.y, P.wz);
-    sky.setBiome(run.dist);
     fx.update(dt, this.pScale());
     const camY = this.state === 'dying' && this.death.type === 'fall' ? 0 : P.flying ? P.y * 0.4 : Math.max(0, P.y) * 0.35;
     Cam.update(dt, P.seg.wx(P.s, P.x * 0.7), camY, P.seg.wz(P.s, P.x * 0.7), P.seg.yaw, false);
-    sky.update(dt, this.time, camera);
+    this.updateSea(dt);
+    sky.update(dt, this.time, camera, Tide.y);
     UI.hud(run, false);
+  },
+  // The tide, the time of day, and everything that changes when the water closes overhead.
+  updateSea(dt) {
+    const want = landIndex(this.run.level);
+    if (this.skyP < want) this.skyP = Math.min(want, this.skyP + dt / 5);
+    const ev = Tide.update(dt, camera.position.y);
+    if (ev) {
+      const under = ev === 'under', c = camera.position;
+      UI.plunge(sky.dim); UI.sea(under); Sound.sea(under); Sound.sfx.plunge(under);
+      if (under) fx.bubbles(c.x, c.y - 1, c.z, 22, 7);
+    }
+    sky.setLook(this.skyP, Tide.sub);
+    if (Tide.under && this.state !== 'over') { // bubbles drifting up all around, and a trail from his nose
+      const P = Player, d = P.seg.dir;
+      this.bubT -= dt;
+      if (this.bubT <= 0) {
+        this.bubT = 0.07;
+        const a = 4 + Math.random() * 24, b = (Math.random() - 0.5) * 17;
+        fx.bubbles(P.wx + d.fx * a + d.rx * b, Math.random() * 3.2, P.wz + d.fz * a + d.rz * b, 1, 0.2);
+        if (Math.random() < 0.5 && monkey.root.visible) { monkey.head.getWorldPosition(_nose); fx.bubbles(_nose.x, _nose.y + 0.1, _nose.z, 1, 0.12, 0.55); }
+      }
+      if (Math.random() < dt * 1.2) Sound.sfx.bloop();
+    }
   },
   pScale() { return renderer ? renderer.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360)) : 400; },
 };
@@ -2711,13 +3218,14 @@ const UI = (() => {
   const $ = (id) => document.getElementById(id);
   const stage = $('stage');
   const el = {};
-  for (const id of ['score', 'mult', 'bananas', 'nanaChip', 'powers', 'hint', 'hintIcon', 'hintText', 'toast', 'best', 'wallet', 'how', 'countNum', 'wipe', 'danger',
-    'overTitle', 'overSub', 'newBest', 'oScore', 'oDist', 'oNanas', 'oBest', 'btnRun', 'btnPause', 'btnResume', 'btnRestart', 'btnHome', 'btnHome2', 'btnAgain',
+  for (const id of ['score', 'mult', 'level', 'bananas', 'nanaChip', 'powers', 'hint', 'hintIcon', 'hintText', 'toast', 'levelUp', 'levelNum', 'levelName', 'best', 'wallet', 'how', 'countNum', 'wipe', 'danger', 'sea', 'plunge',
+    'overTitle', 'overSub', 'newBest', 'oScore', 'oDist', 'oLevel', 'oNanas', 'oBest', 'btnRun', 'btnPause', 'btnResume', 'btnRestart', 'btnHome', 'btnHome2', 'btnAgain',
     'btnMusic', 'btnSfx', 'btnMusic2', 'btnSfx2', 'fatalMsg', 'btnShop', 'btnShop2', 'btnShopDone', 'shopList', 'shopWallet',
     'btnChars', 'btnPrev', 'btnNext', 'btnCharGo', 'btnCharDone', 'charName', 'charBlurb', 'charDots', 'charWallet', 'charNeed']) el[id] = $(id);
   const NANA = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFD23F" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/></svg>';
   const touch = !!((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window);
-  const last = { score: -1, nanas: -1, mult: -1, danger: false, popAt: 0 };
+  const last = { score: -1, nanas: -1, mult: -1, level: -1, danger: false, sea: false, popAt: 0 };
+  const replay = (node) => { node.classList.remove('on'); void node.offsetWidth; node.classList.add('on'); }; // restart a CSS animation
   const setText = (node, txt) => { node.textContent = txt; if (node.dataset.t !== undefined) node.dataset.t = txt; };
 
   const ARROW = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 27V7M7 15l9-9 9 9" fill="none" stroke="#3A1E14" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -2749,6 +3257,8 @@ const UI = (() => {
     bonk: ['Bonk!', (n) => n + ' ran face-first into the ruins.'],
     fall: ['Splash!', (n) => n + ' went for a swim.'],
     flat: ['Flattened!', (n) => 'The boulder caught up with ' + n + '.'],
+    sink: ['Glub!', (n) => n + ' sank to the sea bed.'],
+    boop: ['Booped!', (n) => 'The orca caught up with ' + n + '.'],
   };
   let browseAt = 0;
 
@@ -2772,6 +3282,7 @@ const UI = (() => {
       if (force || run.nanas !== last.nanas) { last.nanas = run.nanas; el.bananas.textContent = fmt(run.nanas); }
       const m = run.mult * (run.dbl > 0 ? 2 : 1);
       if (force || m !== last.mult) { last.mult = m; el.mult.textContent = '×' + m; }
+      if (force || run.level !== last.level) { last.level = run.level; el.level.textContent = 'Level ' + run.level; }
       const mx = run.max;
       setPower('magnet', run.magnet / mx.magnet); setPower('double', run.dbl / mx.double); setPower('shield', run.shield ? run.shieldT / mx.shield : 0);
       setPower('springs', run.springs / mx.springs); setPower('rocket', Player.flying ? Math.max(0.03, run.rocket / mx.rocket) : 0);
@@ -2789,15 +3300,20 @@ const UI = (() => {
       el.hintText.textContent = h.text[touch ? 0 : 1];
       el.hint.classList.add('on');
     },
-    toast(text) {
-      setText(el.toast, text);
-      el.toast.classList.remove('on'); void el.toast.offsetWidth; el.toast.classList.add('on');
+    toast(text) { setText(el.toast, text); replay(el.toast); },
+    // A new level: its number, and what kind of place it is.
+    levelUp(n) {
+      setText(el.levelNum, 'Level ' + n); el.levelName.textContent = levelName(n);
+      el.levelUp.classList.toggle('sea', isSea(n));
+      replay(el.levelUp);
     },
+    sea(on) { if (on !== last.sea) { last.sea = on; el.sea.classList.toggle('on', on); } }, // the edges of the screen darken under water
+    plunge(bright) { el.plunge.style.filter = bright < 0.95 ? 'brightness(' + (0.25 + 0.75 * bright).toFixed(2) + ')' : ''; replay(el.plunge); }, // a wash of foam as the surface passes the camera (dimmer at night)
     showOver(type, score, run, best) {
       const o = OVER[type] || OVER.bonk;
       setText(el.overTitle, o[0]); el.overSub.textContent = o[1](monkey.spec.name);
       el.newBest.classList.toggle('on', !!best);
-      el.oScore.textContent = fmt(score); el.oDist.textContent = fmt(run.dist) + ' m'; el.oNanas.textContent = fmt(run.nanas); el.oBest.textContent = fmt(Save.data.best);
+      el.oScore.textContent = fmt(score); el.oDist.textContent = fmt(run.dist) + ' m'; el.oLevel.textContent = run.level; el.oNanas.textContent = fmt(run.nanas); el.oBest.textContent = fmt(Save.data.best);
       api.setState('over');
       setTimeout(() => { if (stage.dataset.state === 'over') { try { el.btnAgain.focus({ preventScroll: true }); } catch (e) { /* ignore */ } } }, 300);
     },
@@ -2967,7 +3483,7 @@ const Bot = {
     const mine = this.hazard(P.lane, s - 0.6, s + far);
     if (mine && mine.kind === 'block') {
       const free = (l) => { if (l < -1 || l > 1) return false; const h = this.hazard(l, s - 1.3, s + far); return !(h && h.kind === 'block'); };
-      const clearNow = (l) => { if (l < -1 || l > 1) return false; const h = this.hazard(l, s - 1.3, s + 1.6); return !(h && h.kind === 'block'); };
+      const clearNow = (l) => { if (l < -1 || l > 1) return false; const h = this.hazard(l, s - 1.3, s + v * 0.11 + 1.3); return !(h && h.kind === 'block'); }; // crossing a lane takes about a tenth of a second
       let go = 0;
       if (free(P.lane - 1) && free(P.lane + 1)) go = Math.random() < 0.5 ? -1 : 1;
       else if (free(P.lane - 1)) go = -1;
@@ -2998,6 +3514,7 @@ function boot(hot) {
   Save.load(hot);
   Roster.use(Save.data.char);
   boulder = new Boulder(); scene.add(boulder.group);
+  orca = new Orca(); scene.add(orca.group);
   fx = new FX(scene);
 
   function resize() {
@@ -3046,7 +3563,7 @@ function boot(hot) {
   requestAnimationFrame(frame);
 
   // testing hooks
-  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, get world() { return world; }, get monkey() { return monkey; }, get camera() { return camera; }, render() { renderer.render(scene, camera); } };
+  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); } };
 }
 
 try {
@@ -3063,7 +3580,7 @@ try {
 <script>
 // Home-screen app extras: play offline, and pick up new versions by itself.
 (function () {
-  var BUILD = 1795473884;
+  var BUILD = 1795491561;
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
   function check() {
     var st = document.getElementById('stage').dataset.state;
