@@ -82,7 +82,7 @@ function genSegment(seg, W) {
   else { seg.floorStart = HJ; seg.nRows = Math.max(22, Math.round((v * rng.range(4.6, 8.2)) / ROW)); }
   seg.len = seg.floorStart + seg.nRows * ROW + HJ;
 
-  const O = seg.obstacles, B = seg.bananas;
+  const O = seg.obstacles, B = seg.bananas, spots = [];       // spots: open ground half way between one pattern and the next
   const end = seg.len - HJ - Math.max(11, v * 0.8);          // nothing is laid beyond here: the run-up to the corner is kept clear
   const rowS = (k) => seg.floorStart + k * ROW;
   const rowOf = (s) => Math.ceil((s - seg.floorStart) / ROW - 1e-6);
@@ -280,6 +280,7 @@ function genSegment(seg, W) {
       if (used < 0) { name = 'log'; used = P.log(s); }
       last = name;
       const gap = v * tGap * rng.range(1.0, 1.35);
+      if (gap > 9 && s + used + gap * 0.5 < end - 1) spots.push(s + used + gap * 0.5);
       if (seg.dist0 + s > W.nextPickupAt && gap > 9) {
         const ps = s + used + gap * 0.5; // never tucked in behind a totem
         const open = [0, 1, 2].filter((l) => !O.some((o) => o.type === 'pillar' && o.lane === l && o.s > ps - 20 && o.s < ps + 9));
@@ -288,6 +289,20 @@ function genSegment(seg, W) {
       }
       s += used + gap;
     }
+  }
+  // A crate, now and then: never in level 1, and never on a stretch laid while the level is held (so gold cannot be used to hunt them).
+  // It floats on open ground between two patterns, clear of gaps, walkways, movers and tokens, in a lane with no totem to hide it or to follow it.
+  if (seg.level >= 2 && !W.hold && spots.length && rng.chance(CRATE_ODDS)) {
+    const ok = [];
+    for (const ps of spots) {
+      if (seg.holes.some((h) => h.s1 > ps - 6 && h.s0 < ps + 6) || seg.decks.some((d) => d.s1 > ps - 6 && d.r0 < ps + 6)
+        || O.some((o) => o.type === 'mover' && Math.abs(o.s - ps) < 6) || seg.pickups.some((p) => Math.abs(p.s - ps) < 6)) continue;
+      for (let l = 0; l < 3; l++) {
+        const x = laneX(l);
+        if (!O.some((o) => (o.type === 'pillar' && o.lane === l && o.s > ps - 20 && o.s < ps + 9) || (o.s1 > ps - 1.5 && o.s0 < ps + 1.5 && o.x1 > x - 0.6 && o.x0 < x + 0.6))) ok.push([ps, x]);
+      }
+    }
+    if (ok.length) { const at = rng.pick(ok); seg.pickups.push({ kind: 'crate', s: at[0], x: at[1], y: 1.15, got: false, sprite: null }); }
   }
   O.sort((a, b) => a.s0 - b.s0);
   seg.pads = O.filter((o) => o.type === 'pad');
@@ -492,6 +507,7 @@ function buildSegment(seg, W) {
   if (sea) { seg.seaMesh = new THREE.Mesh(gs.build(), MAT.env); seg.seaMesh.visible = Tide.y > SEA_LIFE_Y; group.add(seg.seaMesh); }
 
   for (const p of seg.pickups) {
+    if (p.kind === 'crate') { group.add(makeCrate(p, sea)); continue; } // a crate is a thing, not a token
     const sp = new THREE.Sprite(W.pickupMat[p.kind]);
     sp.position.set(p.x, p.y, -p.s); sp.scale.set(1.5, 1.5, 1);
     p.sprite = sp; group.add(sp);
@@ -699,7 +715,16 @@ class World {
         if ((jx - px) * (jx - px) + (jz - pz) * (jz - pz) > 5600) continue;
         if ((o.bt = (o.bt || 0) - dt) <= 0) { o.bt = 0.13 + Math.random() * 0.1; fx.bubbles(jx, 0.55, jz, 1, 0.4, 1.3); }
       }
-      for (const p of seg.pickups) if (p.sprite && !p.got) { p.sprite.position.y = p.y + Math.sin(t * 3.2 + p.s) * 0.14; const k = 1.5 + Math.sin(t * 6 + p.s) * 0.07; p.sprite.scale.set(k, k, 1); }
+      for (const p of seg.pickups) {
+        if (p.got) continue;
+        if (p.sprite) { p.sprite.position.y = p.y + Math.sin(t * 3.2 + p.s) * 0.14; const k = 1.5 + Math.sin(t * 6 + p.s) * 0.07; p.sprite.scale.set(k, k, 1); }
+        else if (p.mesh) { // a crate turns and bobs, and sheds the odd glint when he is near enough to see it
+          p.mesh.position.y = p.y + Math.sin(t * 2.6 + p.s) * 0.12; p.box.rotation.set(0.16, t * 1.1 + p.s, 0.1);
+          const k = 3.4 + Math.sin(t * 4 + p.s) * 0.35; p.halo.scale.set(k, k, 1);
+          const cx = seg.wx(p.s, p.x), cz = seg.wz(p.s, p.x);
+          if ((cx - px) * (cx - px) + (cz - pz) * (cz - pz) < 4900 && Math.random() < dt * 5) fx.sparkle(cx + (Math.random() - 0.5) * 0.9, p.y + Math.random() * 0.9 - 0.2, cz + (Math.random() - 0.5) * 0.9, 1, 0xffe45c);
+        }
+      }
     }
     this.nanas.count = n; this.nanaInk.count = n;
     this.nanas.instanceMatrix.needsUpdate = true;

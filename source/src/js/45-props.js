@@ -254,3 +254,71 @@ function poseBridge(b, t) {
     kids[i].rotation.z = (b.sea ? 0.03 : 0.012) * Math.sin(a * 0.8 + 1);
   }
 }
+
+// ── the crate a golden banana comes in (a pick-up of kind 'crate'): on land a slatted box with gold light leaking out of it;
+//    under water a sea-chest with its lid ajar. Drawn about its own centre: it floats, turning. ──
+let CRATE_GEO = null;
+function crateGeo() {
+  if (CRATE_GEO) return CRATE_GEO;
+  const make = (fn) => { const b = new GeoBuilder(), k = new GeoBuilder(false), g = new GeoBuilder(); fn(b, k, g); return { env: b.build(), ink: k.build(), glow: g.build() }; };
+  const star = (g, x, y, z, r) => { for (const a of [0, Math.PI / 2]) g.add(SHAPE.box, M(x, y, z, r, r * 0.22, r * 0.22, 0, 0, a + Math.PI / 4), 0xfffbe0); }; // a glint
+  CRATE_GEO = {
+    land: make((b, k, g) => {
+      const S = 0.9, h = S / 2, wood = 0xcf9150, pale = 0xdfa868, dark = 0x8a5a2b;
+      g.add(SHAPE.box, M(0, 0, 0, S - 0.12, S - 0.12, S - 0.12), 0xffe45c);                               // the light inside
+      for (const f of [-1, 1]) {
+        for (let i = -1; i <= 1; i++) {                                                                    // three planks a side, with gaps for the light
+          b.add(SHAPE.box, M(0, i * 0.28, f * (h - 0.03), S, 0.21, 0.06), i ? wood : pale);
+          b.add(SHAPE.box, M(f * (h - 0.03), i * 0.28, 0, 0.06, 0.21, S), i ? pale : wood);
+        }
+        b.add(SHAPE.box, M(0, f * (h - 0.03), 0, S, 0.06, S), dark);                                       // lid and floor
+        for (const [dx, dy, r] of [[-0.17, 0.05, 0.6], [0.0, -0.06, 0.08], [0.18, 0.03, -0.45]]) g.add(SHAPE.box, M(f * dx, dy, f * (h + 0.012), 0.24, 0.11, 0.02, 0, 0, f * r), 0xffe45c); // a banana, in gold leaf
+      }
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(SHAPE.box, M(sx * (h - 0.02), 0, sz * (h - 0.02), 0.13, S + 0.06, 0.13), dark); // corner posts
+      k.add(SHAPE.box, M(0, 0, 0, S + 0.09 + 2 * OT, S + 0.06 + 2 * OT, S + 0.09 + 2 * OT));
+      star(g, 0.52, 0.56, 0.1, 0.34); star(g, -0.5, 0.38, -0.3, 0.2);
+    }),
+    sea: make((b, k, g) => {
+      const W = 1.04, D = 0.68, H = 0.5, hull = 0x7a5238, band = 0xffc93a, rz = Math.PI / 2;
+      b.add(SHAPE.box, M(0, -0.14, 0, W, H, D), hull);
+      b.add(SHAPE.cyl12, M(0, 0.17, 0, D, W, D, 0, 0, rz), 0x8d6142);                                      // the lid, a barrel's half
+      g.add(SHAPE.box, M(0, 0.125, 0, W + 0.03, 0.06, D + 0.05), 0xffe45c);                               // light from under it
+      for (const sx of [-0.32, 0.32]) {
+        b.add(SHAPE.box, M(sx, -0.14, 0, 0.11, H + 0.04, D + 0.05), band);                                 // brass bands
+        b.add(SHAPE.cyl12, M(sx, 0.17, 0, D + 0.05, 0.11, D + 0.05, 0, 0, rz), band);
+      }
+      for (const f of [-1, 1]) b.add(SHAPE.box, M(0, 0.0, f * (D / 2 + 0.03), 0.18, 0.22, 0.06), band);    // the lock
+      k.add(SHAPE.box, M(0, -0.14, 0, W + 2 * OT, H + 2 * OT, D + 2 * OT));
+      k.add(SHAPE.cyl12, M(0, 0.17, 0, D + 2 * OT, W + 2 * OT, D + 2 * OT, 0, 0, rz));
+      for (const [x, y, z, r] of [[-0.44, -0.2, 0.3, 0.13], [0.2, 0.42, 0.2, 0.11], [0.46, -0.3, -0.26, 0.12], [-0.1, 0.4, -0.24, 0.1]]) b.add(SHAPE.sphLo, M(x, y, z, r, r * 0.8, r), 0xe8e2d0); // barnacles
+      b.add(SHAPE.box, M(-0.46, -0.62, 0.22, 0.07, 0.6, 0.03, 0, 0, 0.18), 0x2fa35a);                      // kelp that came up with it
+      b.add(SHAPE.box, M(0.4, -0.58, -0.2, 0.07, 0.5, 0.03, 0, 0, -0.22), 0x3fbf6b);
+      star(g, 0.56, 0.6, 0.1, 0.34); star(g, -0.54, 0.44, -0.2, 0.2);
+    }),
+  };
+  return CRATE_GEO;
+}
+// A soft gold glow round the crate and a shaft of light standing over it, so that something this rare is seen from a long way off.
+let CRATE_FX = null;
+function crateFx() {
+  if (CRATE_FX) return CRATE_FX;
+  const paint = (w, h, fn) => { const c = document.createElement('canvas'); c.width = w; c.height = h; fn(c.getContext('2d')); return new THREE.CanvasTexture(c); };
+  const mat = (tex) => new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  CRATE_FX = {
+    halo: mat(paint(128, 128, (x) => { const g = x.createRadialGradient(64, 64, 4, 64, 64, 64); g.addColorStop(0, 'rgba(255,236,140,.95)'); g.addColorStop(0.35, 'rgba(255,205,60,.45)'); g.addColorStop(1, 'rgba(255,190,40,0)'); x.fillStyle = g; x.fillRect(0, 0, 128, 128); })),
+    beam: mat(paint(64, 256, (x) => { const g = x.createLinearGradient(0, 0, 64, 0); g.addColorStop(0, 'rgba(255,220,90,0)'); g.addColorStop(0.5, 'rgba(255,232,130,.55)'); g.addColorStop(1, 'rgba(255,220,90,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 256);
+      const f = x.createLinearGradient(0, 0, 0, 256); f.addColorStop(0, 'rgba(0,0,0,1)'); f.addColorStop(0.75, 'rgba(0,0,0,0)'); x.globalCompositeOperation = 'destination-out'; x.fillStyle = f; x.fillRect(0, 0, 64, 256); })),
+  };
+  return CRATE_FX;
+}
+function makeCrate(p, sea) {
+  const geo = crateGeo()[sea ? 'sea' : 'land'], fxm = crateFx(), grp = new THREE.Group(), box = new THREE.Group();
+  for (const [part, mat] of [['env', MAT.env], ['ink', MAT.ink], ['glow', MAT.glow]]) box.add(sharedMesh(geo[part], mat));
+  box.scale.setScalar(1.3);
+  const halo = new THREE.Sprite(fxm.halo); halo.scale.set(3.4, 3.4, 1);
+  const beam = new THREE.Sprite(fxm.beam); beam.scale.set(1.5, 7.5, 1); beam.position.y = 3.6;
+  grp.add(box, halo, beam);
+  grp.position.set(p.x, p.y, -p.s);
+  p.mesh = grp; p.box = box; p.halo = halo;
+  return grp;
+}

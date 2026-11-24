@@ -485,7 +485,16 @@ const Game = {
     const run = this.run; run.shield = false; run.shieldT = 0; run.invuln = 0.9; monkey.bubble.visible = false;
     Sound.sfx.pop(); fx.sparkle(Player.wx, Player.y + 0.9, Player.wz, 12, 0xbff3ff);
   },
+  // A crate: one more golden banana in hand (up to the most a save can hold), kept at once.
+  takeCrate(p) {
+    const d = Save.data, P = Player;
+    p.got = true; if (p.mesh) p.mesh.visible = false;
+    if (d.gold < GOLD_MAX) { d.gold++; Save.store(); }
+    UI.gold(); UI.toast('Golden banana!'); Sound.sfx.power(); monkey.setExpr('happy', 0.9); buzz(30);
+    fx.debris(P.wx, P.y + 1, P.wz, 12, this.run && P.seg.sea ? 0x7a5238 : 0xcf9150); fx.sparkle(P.wx, P.y + 1.1, P.wz, 16, 0xffe45c);
+  },
   take(p) {
+    if (p.kind === 'crate') { this.takeCrate(p); return; }
     const run = this.run, k = p.kind, T = powerTime(k);
     p.got = true; if (p.sprite) p.sprite.visible = false;
     Sound.sfx.power(); monkey.setExpr('happy', 0.9); fx.sparkle(Player.wx, Player.y + 1, Player.wz, 14, 0xffffff);
@@ -526,7 +535,7 @@ const Game = {
       b.pull += dt * 5.5;
       if (b.pull >= 1) { this.grab(b); run.pulled.splice(i, 1); }
     }
-    for (const p of seg.pickups) if (!p.got && Math.abs(p.s - s) < 1.15 && Math.abs(p.x - P.x) < 0.95 && P.y < 2.4 && !(p.kind === 'rocket' && this.golden())) this.take(p); // (gold and the rocket do not mix: its token is left where it is)
+    for (const p of seg.pickups) if (!p.got && p.s > from - 1.15 && p.s < s + 1.15 && Math.abs(p.x - P.x) < 0.95 && P.y < 2.4 && !(p.kind === 'rocket' && this.golden())) this.take(p); // (gold and the rocket do not mix: its token is left where it is)
   },
 
   // ── per-frame ──

@@ -255,6 +255,34 @@ const rig = require('./rig');
     return { ok: G.state === 'run' && during === 1 && G.run.level === 2 && endTurns >= 1 && G.run.turns - endTurns <= 4 && G.goldSaves === 0, state: G.state, during, level: G.run.level, cornersInGold: endTurns, cornersAfter: G.run.turns - endTurns, death: G.death && G.death.type };
   });
 
+  // ── crates ──
+  await scene('crate: running through one adds a golden banana and saves it at once; one in the next lane is left; at 99 the count stays 99', async () => {
+    await reloadWith(null);
+    const r = await page.evaluate(() => {
+      const G = __mj.Game, P = __mj.Player, d = __mj.Save.data, seg = T.start(), s = P.s;
+      const a = T.token(seg, 'crate', 1, s + 15), b = T.token(seg, 'crate', 2, s + 30), c = T.token(seg, 'crate', 1, s + 45);
+      T.to(s + 20); const one = { gold: d.gold, got: a.got, stored: JSON.parse(localStorage.getItem('monkeyjones.v1')).gold };
+      T.to(s + 35); const two = { gold: d.gold, got: b.got };
+      d.gold = 99; const alive = T.to(s + 50);
+      return { alive, one, two, three: { gold: d.gold, got: c.got }, count: document.getElementById('goldCount').textContent };
+    });
+    return { ok: r.alive && r.one.gold === 6 && r.one.got && r.one.stored === 6 && r.two.gold === 6 && !r.two.got && r.three.gold === 99 && r.three.got && r.count === '99', r };
+  });
+  await test('crate: he does not run past one at gold\'s speed on a slow frame (58 m/s, 20 frames a second)', () => {
+    const G = __mj.Game, P = __mj.Player, d = __mj.Save.data, seg = T.start('ruins', 12), s = P.s, dt0 = T.dt;
+    const a = T.token(seg, 'crate', 1, s + 41.3), b = T.token(seg, 'magnet', 1, s + 62.9);
+    T.gold(30); d.gold = 3; T.dt = 1 / 20; const alive = T.to(s + 70); T.dt = dt0;
+    return { ok: alive && a.got && d.gold === 4 && b.got, crate: a.got, gold: d.gold, token: b.got };
+  });
+  await test('crate: none is laid on a stretch made while the level is held (gold cannot be used to hunt them)', () => {
+    const m = __mj; let held = 0, free = 0;
+    for (let i = 0; i < 1500; i++) {
+      held += m.gen(20 + (i % 8), 9000 + i, true).pickups.filter((p) => p.kind === 'crate').length;
+      free += m.gen(20 + (i % 8), 9000 + i, false).pickups.filter((p) => p.kind === 'crate').length;
+    }
+    return { ok: held === 0 && free > 15, held, free };
+  });
+
   const bad = errors.filter((e) => !/ReadPixels/.test(e));
   console.log(bad.join('\n') || 'no errors');
   console.log(fails || bad.length ? `FAIL: ${fails} of ${ran}` : `PASS: all ${ran} golden banana rules hold`);

@@ -152,7 +152,9 @@ function boot(hot) {
   // testing hooks
   window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get shark() { return shark; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); },
     // lay out (but do not build) a stretch at a given depth of the run, for the generator's tests
-    gen(depth, seed) { const p = new Seg(null, null); p.len = 60; p.depth = depth - 1; const s = new Seg(p, 'R'); genSegment(s, { rng: makeRng(seed >>> 0), tutorial: false, nextPickupAt: 0 }); return s; } };
+    gen(depth, seed, hold) { const p = new Seg(null, null); p.len = 60; p.depth = depth - 1; const s = new Seg(p, 'R'); genSegment(s, { rng: makeRng(seed >>> 0), tutorial: false, nextPickupAt: 0, hold: !!hold }); return s; },
+    // float a crate on a built stretch (for photographs and for trying things by hand)
+    addCrate(seg, lane, s) { const p = { kind: 'crate', s, x: laneX(lane), y: 1.15, got: false, sprite: null }; seg.pickups.push(p); if (seg.group) seg.group.add(makeCrate(p, seg.sea)); return p; } };
 }
 
 try {

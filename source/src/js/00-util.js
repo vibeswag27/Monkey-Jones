@@ -101,7 +101,7 @@ const UP_KINDS = [...POWER_KINDS, 'gold'];                               // ever
 const GOLD_K = 3, GOLD_VMAX = 58;
 const GOLD_START = 5, GOLD_MAX = 99;                         // how many a new save holds, and the most any save can
 const GOLD_GRACE = 1.5, GOLD_OVER = 3.5, GOLD_BURST = 2.5;   // when it ends: seconds in which nothing can touch him; how long it may be held on through a corner; seconds of running cleared ahead of him
-const CRATE_ODDS = 0.03;                                     // the chance that a stretch, from level 2 on, holds a crate
+const CRATE_ODDS = 0.035;                                    // the chance that a stretch, from level 2 on, is given a crate (about one in seven of those has nowhere fit to put it, which leaves 3 in 100)
 const SMASH_SCORE = 50;                                      // points (times the multiplier) for each thing he smashes while gold
 const UP_COST = [100, 250, 600, 1200, 2500]; // bananas for level 2, 3, 4, 5, 6
 const MAX_LEVEL = 6;
