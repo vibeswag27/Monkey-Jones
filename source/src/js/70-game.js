@@ -627,7 +627,7 @@ const Game = {
     const P = Player;
     let seg = P.seg, sB = P.s - this.bGap, x = P.x * 0.5;
     if (!seg.first && sB < 0 && world.prev && !world.prev.dead) { seg = world.prev; sB = seg.len + sB; x = 0; }
-    else if (seg.decks.some((d) => sB > d.r0 - 4 && sB < d.s1 + 4)) x = P.x; // among raised walkways it keeps to his lane, and goes up and down with the floor
+    else if (seg.decks.some((d) => sB > d.r0 - 4 && sB < d.s1 + 4) || seg.bridges.some((g) => sB > g.s0 - 4 && sB < g.s1 + 4)) x = P.x; // among raised walkways it keeps to his lane, and goes up and down with the floor; over a bridge it follows him across
     const tx = seg.wx(sB, x), tz = seg.wz(sB, x), b = this.bPos;
     if (this.bSnap) { b.set(tx, 0, tz); this.bSnap = false; this.bYaw = seg.yaw; this.bY = 0; }
     const bY = this.bY = damp(this.bY, seg.floorY(sB, x), 9, dt);

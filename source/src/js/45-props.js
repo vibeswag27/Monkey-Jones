@@ -189,3 +189,61 @@ function addBobFrame(gb, rng, z) {
   gb.add(SHAPE.cyl12, M(0, BOB_BAR, z, 0.18, 2 * px + 0.9, 0.18, 0, 0, Math.PI / 2), cane);
   for (let x = -2.4; x <= 2.4; x += 1.2) gb.add(SHAPE.cyl12, M(x, BOB_BAR, z, 0.06, 0.22, 0.22, 0, 0, Math.PI / 2), ring);
 }
+
+// ── a moving bridge: one stepping stone (under water, one turtle) per row of the gap, all in a group that slides from lane to lane ──
+let BRIDGE_GEO = null;
+function bridgeGeo() {
+  if (BRIDGE_GEO) return BRIDGE_GEO;
+  const make = (fn) => { const b = new GeoBuilder(), k = new GeoBuilder(false), g = new GeoBuilder(); fn(b, k, g); return { env: b.build(), ink: k.build(), glow: g.build() }; };
+  BRIDGE_GEO = {
+    // a slab of the old temple that never learned to fall: paved on top, raw rock beneath, lit from under
+    stone: make((b, k, g) => {
+      b.add(SHAPE.box, M(0, -0.16, 0, LANE_W - 0.08, 0.32, ROW - 0.14), 0xf2e2ba);
+      k.add(SHAPE.box, M(0, -0.16, 0, LANE_W - 0.08 + 2 * OT, 0.32 + 2 * OT, ROW - 0.14 + 2 * OT));
+      b.add(SHAPE.box, M(0, -0.03, 0, LANE_W - 0.36, 0.07, ROW - 0.42), 0xe4cf9e);
+      g.add(SHAPE.box, M(0, 0.012, 0, 0.52, 0.02, 0.52, 0, Math.PI / 4, 0), 0xffe45c);                 // a lit diamond to aim for
+      b.add(SHAPE.rock, M(0, -0.72, 0, 1.6, 0.86, 2.0, 0, 0.4, 0), 0x93a9b5);                          // the rock it was cut from
+      b.add(SHAPE.rock, M(0.1, -1.36, -0.1, 0.9, 0.6, 1.1, 0, 1.3, 0), 0x7f96a3);
+      g.add(SHAPE.box, M(0, -0.34, 0, LANE_W - 0.3, 0.05, ROW - 0.4), 0x7df0ff);                       // the light it rides on
+      for (const sd of [-1, 1]) b.add(SHAPE.box, M(sd * 0.6, -0.4, 0.5 * sd, 0.09, 0.5, 0.06), 0x3fbf6b);
+    }),
+    // a sea turtle, nose up the path, its back level with the floor
+    turtle: make((b, k) => {
+      const shell = 0x4fae6a, scute = 0x3b8f57, skin = 0x9bd48f, rim = 0xe0d08f;
+      b.add(SHAPE.sph, M(0, -0.31, 0, LANE_W - 0.1, 0.62, ROW - 0.2), shell);
+      k.add(SHAPE.sph, M(0, -0.31, 0, LANE_W - 0.1 + 2 * OT, 0.62 + 2 * OT, ROW - 0.2 + 2 * OT));
+      b.add(SHAPE.cyl12, M(0, -0.36, 0, LANE_W + 0.02, 0.12, ROW - 0.06), rim);
+      for (const [dx, dz, r] of [[0, 0, 0.62], [0, -0.62, 0.42], [0, 0.62, 0.42], [-0.5, -0.3, 0.36], [0.5, -0.3, 0.36], [-0.5, 0.32, 0.36], [0.5, 0.32, 0.36]]) // the plates of its shell
+        b.add(SHAPE.cyl, M(dx, -0.31 + 0.31 * Math.sqrt(Math.max(0, 1 - (dx * dx) / 0.81 - (dz * dz) / 1.21)) - 0.02, dz, r, 0.05, r, 0, 0.4, 0), scute);
+      b.add(SHAPE.sph, M(0, -0.3, -1.32, 0.56, 0.44, 0.66), skin);                                      // head
+      k.add(SHAPE.sph, M(0, -0.3, -1.32, 0.56 + 2 * OT, 0.44 + 2 * OT, 0.66 + 2 * OT));
+      for (const sd of [-1, 1]) {
+        b.add(SHAPE.sphLo, M(sd * 0.22, -0.2, -1.5, 0.12, 0.14, 0.12), 0x241c18);
+        b.add(SHAPE.sph, M(sd * 1.1, -0.42, -0.62, 0.95, 0.12, 0.46, 0, sd * 0.55, sd * -0.12), skin);  // front flippers
+        b.add(SHAPE.sph, M(sd * 0.9, -0.42, 0.86, 0.6, 0.1, 0.36, 0, sd * -0.7, 0), skin);              // back flippers
+      }
+      b.add(SHAPE.cone, M(0, -0.38, 1.22, 0.2, 0.36, 0.12, Math.PI / 2, 0, 0), skin);                   // tail
+    }),
+  };
+  return BRIDGE_GEO;
+}
+function makeBridge(b, sea) {
+  const geo = bridgeGeo()[sea ? 'turtle' : 'stone'], grp = new THREE.Group(), n = Math.max(1, Math.round((b.s1 - b.s0) / ROW));
+  for (let i = 0; i < n; i++) {
+    const one = new THREE.Group();
+    for (const [part, mat] of [['env', MAT.env], ['ink', MAT.ink], ['glow', MAT.glow]]) if (geo[part].attributes.position.count) one.add(sharedMesh(geo[part], mat));
+    one.position.z = -(b.s0 + (i + 0.5) * ROW);
+    grp.add(one);
+  }
+  b.mesh = grp; b.sea = sea;
+  return grp;
+}
+function poseBridge(b, t) {
+  const kids = b.mesh.children;
+  b.mesh.position.x = b.x;
+  for (let i = 0; i < kids.length; i++) { // each rides a little differently from its neighbours
+    const a = t * (b.sea ? 2.1 : 1.6) + i * 1.3;
+    kids[i].position.y = (b.sea ? 0.03 : 0.025) * Math.sin(a) - 0.03;
+    kids[i].rotation.z = (b.sea ? 0.035 : 0.012) * Math.sin(a * 0.8 + 1);
+  }
+}

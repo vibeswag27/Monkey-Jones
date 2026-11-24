@@ -30,6 +30,7 @@ const Bot = {
     }
     for (const h of seg.holes) {
       if (h.s1 < from || h.s0 > to || !(x > h.x0 && x < h.x1)) continue;
+      if (h.bridge) { if (!(h.bridge.locked && h.bridge.to === li)) see('block', h.s0, (h.s0 + h.s1) / 2); continue; } // a bridged gap: only the lane the platform has settled on is open
       see(h.s1 - h.s0 <= v * AIR_T * 0.78 ? 'jump' : 'block', h.s0, (h.s0 + h.s1) / 2);
     }
     // Raised walkways. In his own lane, steps ahead are just more path; a face with no steps is a wall.
@@ -61,6 +62,8 @@ const Bot = {
       else if (free(P.lane + 1)) go = 1;
       else if (free(P.lane - 2) && clearNow(P.lane - 1)) go = -1;
       else if (free(P.lane + 2) && clearNow(P.lane + 1)) go = 1;
+      // if the lane he would move to has something to hop almost at once, and the block is not yet upon him, he lets it go by first
+      if (go && mine.s0 - s > v * 0.5 + 2) { const h = this.hazard(P.lane + go, s - 1.3, s + v * 0.42 + 1); if (h && h.kind === 'jump') go = 0; }
       if (go) Game.input(go < 0 ? 'left' : 'right');
     }
     // steps up in the next lane are worth a detour (he decides once per flight, and goes for most of them)

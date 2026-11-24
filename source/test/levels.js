@@ -13,6 +13,7 @@ const { open, until } = require('./lib2');
       await until(page, 'm.Game.state === "run"', 5, false);
       const r = await page.evaluate(({ cap, L }) => {
         const m = window.__mj, G = m.Game, P = m.Player, dt = 1 / 60;
+        G.run.danger = 0; // a real run starts at level 1, where the chaser has dropped back before the first obstacle; starting cold at level 12 it has not
         let t = 0, vmax = 0, hurt = G.run.danger;
         const met = {}, meet = (k) => { met[k] = (met[k] || 0) + 1; };
         while (G.state === 'run' && G.run.dist < cap && G.run.level === L && t < 600) {
@@ -25,6 +26,7 @@ const { open, until } = require('./lib2');
           for (const o of P.seg.pads || []) { // what of the new furniture did he actually meet, and what did he do about it?
             if (!o.met && P.s > o.s1) { o.met = true; meet(o.d ? 'padDecks' : 'padPiles'); if (o.used) meet(o.d ? 'padDecksBounced' : 'padPilesBounced'); }
           }
+          for (const b of P.seg.bridges) if (!b.met && P.s > b.s1) { b.met = true; meet('bridges'); }
           for (const o of P.seg.movers || []) if (!o.met && P.s > o.s1) { o.met = true; meet(o.kind === 'side' ? 'sweepers' : 'bobbers'); }
           for (const d of P.seg.decks) {
             if (!d.met && P.s > d.s0) { d.met = true; meet(d.ramp ? 'decks' : d.pad ? 'padDeckBlocks' : 'walls'); }
@@ -35,6 +37,7 @@ const { open, until } = require('./lib2');
         const near = seg.obstacles.filter((o) => Math.abs(o.s - P.s) < 30).map((o) => `${o.type}@${(o.s - P.s).toFixed(1)}${o.lane !== undefined ? ' L' + o.lane : ''}${o.l0 !== undefined ? ' L' + o.l0 + '-' + o.l1 : ''}`);
         const holes = seg.holes.filter((h) => h.s1 > P.s - 30 && h.s0 < P.s + 30).map((h) => `hole[${(h.s0 - P.s).toFixed(1)},${(h.s1 - P.s).toFixed(1)}] x[${h.x0.toFixed(1)},${h.x1.toFixed(1)}]`);
         return { end: G.death ? G.death.type : 'ok', sea: !!seg.sea, wet: m.Tide.wet, dist: Math.round(R.dist), level: R.level, vmax: +vmax.toFixed(1), lane: P.lane, y: +P.y.toFixed(2), s: +P.s.toFixed(1), len: +seg.len.toFixed(1), jt: seg.jt, danger: +R.danger.toFixed(1), near, holes, met,
+          bridges: seg.bridges.filter((b) => b.s1 > P.s - 30 && b.s0 < P.s + 40).map((b) => `bridge [${(b.s0 - P.s).toFixed(1)},${(b.s1 - P.s).toFixed(1)}] to L${b.to} x ${b.x.toFixed(2)} ${b.locked ? 'locked' : 'free'}`),
           decks: seg.decks.filter((d) => d.s1 > P.s - 30 && d.r0 < P.s + 30).map((d) => `${d.ramp ? 'deck' : 'wall'} L${d.lane} [${(d.r0 - P.s).toFixed(1)},${(d.s0 - P.s).toFixed(1)},${(d.s1 - P.s).toFixed(1)}]`) };
       }, { cap, L });
       line.speed = Math.max(line.speed, r.vmax); line.ends[r.end] = (line.ends[r.end] || 0) + 1;

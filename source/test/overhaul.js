@@ -15,13 +15,21 @@ const { open } = require('./lib2');
     window.T = {
       dt: 1 / 60,
       // a fresh run on an empty stretch; returns the stretch. speed: fraction of the level's speed to hold (default 1)
-      start(map) {
-        m.Save.data.map = map || 'ruins'; m.Save.data.runs = 5; m.Save.data.seaChar = null; m.Save.data.char = 'monkey'; G.restart();
+      // level: which level of the run to start in (default 1: 11 m/s; level 12 runs at the top speed, 29 m/s)
+      start(map, level) {
+        m.Save.data.map = map || 'ruins'; m.Save.data.runs = 5; m.Save.data.seaChar = null; m.Save.data.char = 'monkey';
+        m.Seg.startDepth = ((level || 1) - 1) * 4; G.restart(); m.Seg.startDepth = 0;
         let t = 0; while (G.state !== 'run' && t < 5) { G.update(this.dt); t += this.dt; }
         const seg = P.seg; seg.obstacles.length = 0; seg.holes.length = 0; seg.holeCells.clear(); seg.bananas.length = 0; seg.pickups.length = 0;
-        for (const k of ['decks', 'movers', 'bridges']) if (seg[k]) seg[k].length = 0;
-        seg.obI = 0; seg.bI = 0; G.run.invuln = 0; G.run.danger = 0; G.run.ghost = 0; G.run.speed = 11;
+        for (const k of ['decks', 'movers', 'bridges', 'pads']) if (seg[k]) seg[k].length = 0;
+        this.v = Math.min(29, 11 * Math.pow(1.1, (level || 1) - 1));
+        seg.obI = 0; seg.bI = 0; G.run.invuln = 0; G.run.danger = 0; G.run.ghost = 0; G.run.speed = this.v;
         return seg;
+      },
+      // a gap right across the path from s0, `len` long, with a platform that shuttles between the lanes (or, frozen, sits in `lane`)
+      bridge(seg, s0, len, lane, frozen) {
+        const b = { s0, s1: s0 + len, x: (lane - 1) * 1.9, to: lane, locked: !!frozen, ph: 0 };
+        seg.bridges.push(b); seg.holes.push({ s0, s1: s0 + len, x0: -99, x1: 99, bridge: b }); return b;
       },
       deck(seg, lane, s0, s1, ramp) { const x = (lane - 1) * 1.9, d = { lane, s0, s1, h: 2.2, ramp: !!ramp, r0: ramp ? s0 - 5.5 : s0, x0: x - 0.95, x1: x + 0.95 }; seg.decks.push(d); return d; },
       to(s, each) { let n = 0; while (G.state === 'run' && P.s < s && n++ < 9000) { if (each) each(); G.update(this.dt); } return G.state === 'run'; },
@@ -197,6 +205,58 @@ const { open } = require('./lib2');
     const G = __mj.Game, P = __mj.Player, seg = T.start(), sm = P.s + 20; T.mover(seg, 'bob', 1, sm, 0, 0); T.lane(1);
     const alive = T.to(sm + 3);
     return { ok: alive && G.run.danger <= 0, danger: G.run.danger };
+  });
+
+  // ── moving bridges ──
+  await test('bridge: on the platform he crosses; a lane away is a fall, and under water a sinking', () => {
+    const G = __mj.Game, P = __mj.Player, got = [];
+    for (const [map, lane] of [['ruins', 0], ['ruins', -1], ['tide', 1]]) {
+      const seg = T.start(map), s0 = P.s + 20; T.bridge(seg, s0, 12.9, 1, true); T.lane(lane);
+      const alive = T.to(s0 + 16); got.push({ map, lane, alive, death: alive ? null : G.death.type, s: +(P.s - s0).toFixed(1) });
+    }
+    return { ok: got[0].alive && got[1].death === 'fall' && got[2].death === 'sink', got };
+  });
+  await test('bridge: it shuttles from lane to lane while he is far off, smoothly', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), b = T.bridge(seg, P.s + 900, 12.9, 1, false), lanes = new Set();
+    T.wait(0.05); // (the first step puts it where the clock says it should be)
+    let jump = 0, last = null; T.wait(5.5, () => { lanes.add(b.to); if (last !== null) jump = Math.max(jump, Math.abs(b.x - last)); last = b.x; });
+    return { ok: lanes.size === 3 && jump > 0.02 && jump < 0.3 && b.locked === false, lanes: [...lanes], jump };
+  });
+  await test('bridge: about 1.3 s out it settles on a lane, is at rest 0.9 s before he arrives, and stays put until he is across (at 11 m/s and at 29)', () => {
+    const G = __mj.Game, P = __mj.Player, got = [];
+    for (const level of [1, 12]) for (const ph of [0, 0.45, 0.8, 1.1, 1.3]) {
+      const seg = T.start('ruins', level), v = T.v, s0 = P.s + 1.3 * v + 3 + 9, b = T.bridge(seg, s0, 0.9 * v + 3, 1, false); b.ph = ph;
+      let tLock = -1, to = -1, changed = false, tRest = -1, tArr = -1, moved = false;
+      const watch = () => {
+        if (b.locked && tLock < 0) { tLock = G.time; to = b.to; }
+        if (tLock >= 0) {
+          if (b.to !== to) changed = true;
+          T.lane(to - 1);                                            // he takes the lane it has settled on
+          const rest = Math.abs(b.x - (to - 1) * 1.9) < 1e-9;
+          if (rest && tRest < 0) tRest = G.time; if (!rest && tRest >= 0) moved = true;
+        }
+        if (tArr < 0 && P.s >= s0) tArr = G.time;
+      };
+      const alive = T.to(b.s1 + 1, watch);
+      got.push({ v, ph, alive, lead: +(tArr - tLock).toFixed(2), rest: +(tArr - tRest).toFixed(2), changed, moved });
+    }
+    return { ok: got.every((r) => r.alive && r.lead >= 1.2 && r.rest >= 0.9 && !r.changed && !r.moved), got };
+  });
+  await test('bridge: the autopilot crosses 20 of 20', () => {
+    const G = __mj.Game, P = __mj.Player, lost = [];
+    for (let i = 0; i < 20; i++) {
+      const seg = T.start(i % 4 < 2 ? 'ruins' : 'tide', i % 2 ? 12 : 1), v = T.v, s0 = P.s + 1.3 * v + 3 + 10, b = T.bridge(seg, s0, 0.9 * v + 3, 1, false); b.ph = i * 0.37;
+      T.lane([-1, 0, 1][i % 3]);
+      const alive = T.to(b.s1 + 3, () => __mj.Bot.think());
+      if (!alive) lost.push({ i, v, to: b.to, lane: P.lane, at: +(P.s - s0).toFixed(1), death: G.death && G.death.type });
+    }
+    return { ok: lost.length === 0, lost };
+  });
+  await test('bridge: its bananas ride with it', () => {
+    const P = __mj.Player, seg = T.start(), b = T.bridge(seg, P.s + 900, 12.9, 1, false);
+    const n = { s: b.s0 + 2, x: b.x, y: 0.62, got: false, pull: -1, ph: 0, wx: 0, wz: 0, ride: b }; seg.bananas.push(n);
+    const seen = new Set(); T.wait(4, () => { seen.add(Math.round(n.x * 10)); });
+    return { ok: seen.size > 3 && n.x === b.x && Math.abs(n.wx - seg.wx(n.s, n.x)) < 1e-9 && Math.abs(n.wz - seg.wz(n.s, n.x)) < 1e-9, places: seen.size };
   });
 
   console.log(errors.filter((e) => !/ReadPixels/.test(e)).join('\n') || 'no errors'); if (errors.filter((e) => !/ReadPixels/.test(e)).length) fails++;

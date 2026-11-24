@@ -24,8 +24,8 @@ class Seg {
   }
   wx(s, x) { return this.ox + this.dir.fx * s + this.dir.rx * x; }
   wz(s, x) { return this.oz + this.dir.fz * s + this.dir.rz * x; }
-  overHole(s, x) {
-    for (const h of this.holes) if (s > h.s0 + 0.14 && s < h.s1 - 0.14 && x > h.x0 && x < h.x1) return true;
+  overHole(s, x) { // (a gap with a bridge is solid where the bridge is at the moment)
+    for (const h of this.holes) if (s > h.s0 + 0.14 && s < h.s1 - 0.14 && x > h.x0 && x < h.x1 && !(h.bridge && Math.abs(x - h.bridge.x) < LANE_W / 2)) return true;
     return false;
   }
   // How high the floor stands at (s, x): 0, part of the way up a flight of steps, or on top of a deck.
@@ -53,11 +53,26 @@ function moverBox(o, t) {
   return o;
 }
 
+// A moving bridge { s0, s1, x, to, locked, ph }: a platform one lane wide across a gap, which shuttles from lane to lane
+// (0 → 1 → 2 → 1 → …) with a second's wait in each. Once the runner is about 1.3 s short of the gap it finishes the step
+// it is on and stays there for good; `to` is the lane it is in, or on its way to.
+const BRIDGE_SEQ = [0, 1, 2, 1], BRIDGE_WAIT = 1.0, BRIDGE_SLIDE = 0.35;
+function bridgeStep(b, t, dt, runnerS, v) {
+  const step = BRIDGE_WAIT + BRIDGE_SLIDE, u = (t + (b.ph || 0)) / step, i = Math.floor(u), f = (u - i) * step, sliding = f > BRIDGE_WAIT;
+  const from = BRIDGE_SEQ[((i % 4) + 4) % 4], next = BRIDGE_SEQ[(((i + 1) % 4) + 4) % 4];
+  if (!b.locked && runnerS > b.s0 - (1.3 * v + 3)) { b.locked = true; b.to = sliding ? next : from; b.holdAt = sliding ? t + step - f : t; }
+  if (b.locked && !(t < b.holdAt)) { b.x = laneX(b.to); return b; }
+  if (!b.locked) b.to = sliding ? next : from;
+  b.x = lerp(laneX(from), laneX(next), sliding ? smooth((f - BRIDGE_WAIT) / BRIDGE_SLIDE) : 0);
+  return b;
+}
+
 // ── layout: decide what goes where on a stretch ──
 function genSegment(seg, W) {
   const rng = W.rng, L = seg.level, v = levelSpeed(L);
   const prog = seg.depth / LEVEL_STRETCHES;                  // 0 at the start, 1 where level 2 begins, …
   const hard = Math.min(4, Math.pow(1.22, L - 1));           // how far the tricky patterns outweigh the simple ones
+  const fresh = Math.min(hard, 2.2);                         // and how far the new furniture (decks, pads, movers, bridges) is weighted up to keep pace
   const tight = Math.max(0.78, Math.pow(0.975, L - 1));      // two-part patterns close up a little each level too
   const dZig = Math.max(v * 0.62 * tight, 9), dLogBeam = Math.max(v * tight, 12), dBeamLog = Math.max(v * 0.95 * tight, 12);
   seg.v = v;
@@ -217,6 +232,16 @@ function genSegment(seg, W) {
       else line(s - 3.3, s + 4.3, a, 0.5); // bananas along the floor beneath it, for the bold
       return 1.2;
     },
+    // A gap too wide to jump, and one platform that shuttles across it from lane to lane; it settles for him as he comes, and its bananas ride with it.
+    bridge(s) {
+      const k = rowOf(s + 0.9 * v), rows = Math.ceil((0.9 * v + 3) / ROW);
+      if (k + rows + 2 >= seg.nRows || rowS(k + rows) + 0.3 * v > end) return -1;
+      addHole(k, rows, [0, 1, 2]);
+      const h = seg.holes[seg.holes.length - 1], b = { s0: h.s0, s1: h.s1, x: 0, to: 1, locked: false, ph: rng.f() * 5.4 };
+      h.bridge = b; seg.bridges.push(b);
+      for (let q = b.s0 + 1.2; q < b.s1 - 0.6; q += 1.9) { nana(q, 1); B[B.length - 1].ride = b; }
+      return b.s1 - s + 0.3 * v;
+    },
     bananas(s) {
       let lane = rng.int(0, 2), ss = s;
       for (let i = 0; i < 3; i++) { line(ss, ss + 5.7, lane); ss += 7.6; lane = clamp(lane + rng.pick([-1, 1]), 0, 2); }
@@ -224,7 +249,7 @@ function genSegment(seg, W) {
     },
   };
   const need = { pillars1: 1.3, pillars2: 1.3, log: 1, beam: 1, beamPillar: 1.3, gap: 5 * ROW, narrow: 8 * ROW, zig: dZig + 1.3, logBeam: dLogBeam + 1, beamLog: dBeamLog + 1, rubble: 1.2, mixed: 1.3, bananas: 21,
-    deck: RAMP_LEN + 12 + landing, wall: 8 + landing, padDeck: 2 + 0.25 * v + Math.max(12, 1.1 * v) + landing, padPile: 1 + v * PAD_AIR + 0.55 * v, sweeper: 1.2, bobber: 1.2 };
+    deck: RAMP_LEN + 12 + landing, wall: 8 + landing, padDeck: 2 + 0.25 * v + Math.max(12, 1.1 * v) + landing, padPile: 1 + v * PAD_AIR + 0.55 * v, sweeper: 1.2, bobber: 1.2, bridge: 2.1 * v + 3 + 2 * ROW };
 
   if (tutorial) { // a gentle opening that teaches one move at a time
     line(7.6, 22.8, 1);
@@ -244,8 +269,9 @@ function genSegment(seg, W) {
         [3, 'pillars1'], [prog >= 0.5 ? 2.3 : 0.7, 'pillars2'], [3 * hop, 'log'], [2.5, 'beam'], [1 / hard, 'bananas'],
         [on(0.5, 2.3), 'gap'], [on(0.75, 1.6), 'rubble'], [on(1, 1.6 * hard * hop), 'mixed'], [on(1.75, 1.3 * hard), 'beamPillar'],
         [on(2, 1.8 * hard), 'narrow'], [on(2.25, 1.8 * hard), 'zig'], [on(2.75, 1.5 * hard * hop), 'logBeam'], [on(2.75, 1.3 * hard * hop), 'beamLog'],
-        [on(0.25, 2.6), 'deck'], [on(1, 1.1 * hard), 'wall'], [on(0.75, 2), 'padDeck'], [on(1.25, 1.2 * Math.min(hard, 2)), 'padPile'],
-        [on(1, 2.2), 'sweeper'], [on(1.5, 2), 'bobber'],
+        // the bigger furniture keeps its share as the classics grow fiercer: about two patterns in five, at every level
+        [on(0.25, 2.6 * fresh), 'deck'], [on(1, 1.1 * hard), 'wall'], [on(0.75, 2 * fresh), 'padDeck'], [on(1.25, 1.2 * fresh), 'padPile'],
+        [on(1, 2.2 * fresh), 'sweeper'], [on(1.5, 2 * fresh), 'bobber'], [on(2, 2.4 * fresh), 'bridge'],
       ];
       let name = rng.weighted(table);
       if (name === last) name = rng.weighted(table);
@@ -426,6 +452,7 @@ function buildSegment(seg, W) {
   }
 
   // things that move get meshes of their own, posed every frame (see World.update)
+  for (const b of seg.bridges) { group.add(makeBridge(b, sea)); bridgeStep(b, 0, 0, -1e9, 0); poseBridge(b, 0); }
   let frameAt = -9;
   for (const o of seg.movers) {
     group.add(makeMover(o, sea));
@@ -613,8 +640,10 @@ class World {
     if (wet !== this.wet) { this.wet = wet; this.showSeaLife(this.prev, wet, 0); this.showSeaLife(this.cur, wet, 0); } // coral and company appear as the water reaches them
     for (const seg of segs) {
       if (!seg || seg.dead) continue;
+      for (const b of seg.bridges) { bridgeStep(b, t, dt, Player.seg === seg ? Player.s : -1e9, Game.run ? Game.run.speed : 0); if (b.mesh) poseBridge(b, t); }
       for (const b of seg.bananas) {
         if (b.got || n >= cap) continue;
+        if (b.ride && b.pull < 0) { b.x = b.ride.x; b.wx = seg.wx(b.s, b.x); b.wz = seg.wz(b.s, b.x); } // a banana on a moving bridge goes where the bridge goes
         let x = b.wx, y = b.y + Math.sin(t * 3 + b.ph) * 0.07, z = b.wz, sc = 1;
         if (b.pull >= 0) { const e = b.pull * b.pull; x = lerp(x, px, e); y = lerp(y, py + 0.8, e); z = lerp(z, pz, e); sc = 1 - e * 0.5; }
         const a = t * 2.6 + b.ph, ca = Math.cos(a) * sc, sn = Math.sin(a) * sc, o = n * 16;

@@ -12,7 +12,7 @@ const { open } = require('./lib2');
       const bad = [], stats = {};
       const fail = (L, i, msg) => { if (bad.length < 12) bad.push('level ' + L + ' #' + i + ': ' + msg); else if (bad.length === 12) bad.push('…'); };
       for (const L of [1, 2, 3, 8, 15]) {
-        const st = stats[L] = { stretches: 0, withDeck: 0, decks: 0, walls: 0, pads: 0, padDecks: 0, sweepers: 0, bobbers: 0 };
+        const st = stats[L] = { stretches: 0, withDeck: 0, decks: 0, walls: 0, pads: 0, padDecks: 0, sweepers: 0, bobbers: 0, bridges: 0 };
         for (let i = 0; i < N; i++) {
           const depth = (L - 1) * 4 + (L === 1 ? 1 + (i % 3) : i % 4), seg = m.gen(depth, (i + 1) * 7919 + L * 104729), v = seg.v;
           const O = seg.obstacles, D = seg.decks, tail = 0.4 * v, f = (msg) => fail(L, i, msg);
@@ -64,6 +64,20 @@ const { open } = require('./lib2');
           }
           for (const d of D) if (d.pad && (d.pad.type !== 'pad' || d.pad.d !== d)) f('a deck paired with the wrong pad');
           if ((seg.movers || []).length !== O.filter((o) => o.type === 'mover').length) f('the list of movers does not match the obstacles');
+          if (seg.bridges.length !== seg.holes.filter((h) => h.bridge).length) f('a bridge without its gap, or a gap that lost its bridge');
+          for (const h of seg.holes) {
+            const b = h.bridge; if (!b) continue;
+            st.bridges++;
+            if (!seg.bridges.includes(b) || b.s0 !== h.s0 || b.s1 !== h.s1) f('a bridge that does not match its gap');
+            if (h.x0 > -50 || h.x1 < 50) f('a bridged gap that does not span the path');
+            if (h.s1 - h.s0 < 0.9 * v + 3 - 1e-6) f('a bridged gap short enough to tempt a jump: ' + (h.s1 - h.s0).toFixed(1) + ' m');
+            if (h.s1 > seg.len - HJ - Math.max(11, 0.8 * v) + 1e-6) f('a bridge that ends in the run-up to the corner');
+            for (const o of O) if (o.s1 > h.s0 - 0.9 * v && o.s0 < h.s1 + 0.3 * v) f(o.type + ' by a bridge');
+            for (const d of D) if (d.s1 > h.s0 - 0.9 * v && d.r0 < h.s1 + 0.3 * v) f('a deck by a bridge');
+            for (const q of seg.holes) if (q !== h && q.s1 > h.s0 - 0.9 * v && q.s0 < h.s1 + 0.3 * v) f('another hole by a bridge');
+            for (const n of seg.bananas) if ((n.s > h.s0 - 0.2 && n.s < h.s1 + 0.2) !== (n.ride === b)) { f('a banana over a bridged gap that does not ride the bridge (or one that rides it from outside)'); break; }
+            for (const p of seg.pickups) if (p.s > h.s0 - 2 && p.s < h.s1 + 2) f('a pick-up over a bridged gap');
+          }
           for (const o of O) {
             if (o.type !== 'mover') continue;
             if (o.kind === 'side') st.sweepers++; else st.bobbers++;
@@ -89,11 +103,12 @@ const { open } = require('./lib2');
       ['no walls without steps in level 1, some from level 3', S[1].walls === 0 && S[3].walls > 0 && S[8].walls > 0 && S[15].walls > 0],
       ['bounce pads appear by level 2 and stay (at least 1 stretch in 8 from level 3)', S[1].pads + S[2].pads > 0 && [3, 8, 15].every((L) => S[L].pads >= S[L].stretches / 8)],
       ['some pads serve a deck and some stand alone', [3, 8, 15].every((L) => S[L].padDecks > 0 && S[L].pads > S[L].padDecks)],
+      ['no bridges before level 3; from then on at least 1 stretch in 12 has one', S[1].bridges + S[2].bridges === 0 && [3, 8, 15].every((L) => S[L].bridges >= S[L].stretches / 12)],
       ['nothing moves in level 1; sweepers and bobbers both from level 3 on (each in at least 1 stretch in 10)', S[1].sweepers + S[1].bobbers === 0 && [3, 8, 15].every((L) => S[L].sweepers >= S[L].stretches / 10 && S[L].bobbers >= S[L].stretches / 10)],
     ];
     for (const [name, ok] of want) { if (!ok) fails++; console.log((ok ? 'ok   ' : 'FAIL ') + map + ': ' + name); }
     if (r.bad.length) { fails++; console.log('FAIL ' + map + ': layout rules broken\n  ' + r.bad.join('\n  ')); } else console.log('ok   ' + map + ': no layout rule broken in ' + N * 5 + ' stretches');
-    console.log('     ' + [1, 2, 3, 8, 15].map((L) => 'L' + L + ' ' + Math.round(share(L) * 100) + '% (' + S[L].decks + ' decks, ' + S[L].walls + ' walls, ' + S[L].pads + ' pads, ' + S[L].sweepers + '+' + S[L].bobbers + ' movers)').join('  '));
+    console.log('     ' + [1, 2, 3, 8, 15].map((L) => 'L' + L + ' ' + Math.round(share(L) * 100) + '% (' + S[L].decks + ' decks, ' + S[L].walls + ' walls, ' + S[L].pads + ' pads, ' + S[L].sweepers + '+' + S[L].bobbers + ' movers, ' + S[L].bridges + ' bridges)').join('  '));
   }
   console.log(errors.length ? errors.join('\n') : 'no errors');
   console.log(fails || errors.length ? 'FAIL: ' + fails : 'PASS: the generator keeps its rules');
