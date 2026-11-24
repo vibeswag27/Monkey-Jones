@@ -21,7 +21,7 @@ const WHO = process.argv[2] && process.argv[2] !== 'both' ? [process.argv[2]] : 
     await ev('m.UI.openChars()'); await step(page, 1.6); await snap('characters', true); await ev('m.UI.closeChars()'); await step(page, 0.5);
     await ev('m.Game.startIntro(false)'); await step(page, 0.3); await snap('startled'); await step(page, 0.6); await snap('off');
     await until(page, 'm.Game.state === "run"', 5, false); await step(page, 0.7, true); await snap('swimming', true); await step(page, 0.22, true); await snap('swimming 2');
-    // a leap over napping seals
+    // a leap over giant clams
     if (await upTo('log', 3.2)) { await step(page, 0.14, true); await snap('leap up', true); await step(page, 0.2, true); await snap('leap over'); await step(page, 0.2, true); await snap('coming down'); }
     // a dive under a beam
     if (await upTo('beam', 7)) { await snap('beam ahead'); await until(page, 'm.Player.slide > 0', 3, true); await step(page, 0.12, true); await snap('dive', true); await step(page, 0.16, true); await snap('under it'); }
@@ -36,9 +36,9 @@ const WHO = process.argv[2] && process.argv[2] !== 'both' ? [process.argv[2]] : 
     await ev('m.Game.take({ kind: "rocket", got: false, sprite: null });'); await step(page, 1.1, true); await snap('rocket', true); await step(page, 0.4, true); await snap('rocket 2');
     await until(page, '!m.Player.flying && m.Player.grounded && m.Game.run.ghost <= 0', 30, true); // (just down from a flight nothing can touch it for a moment)
     // a stumble
-    await ev('m.Game.run.shield = false; m.monkey.bubble.visible = false; m.Game.run.invuln = 0; m.Game.run.danger = 0; m.Game.stumble({ type: "log", skin: "seal" })'); await step(page, 0.2, true); await snap('stumble'); await step(page, 0.3, true); await snap('orca close');
+    await ev('m.Game.run.shield = false; m.monkey.bubble.visible = false; m.Game.run.invuln = 0; m.Game.run.danger = 0; m.Game.stumble({ type: "log", skin: "clam" })'); await step(page, 0.2, true); await snap('stumble'); await step(page, 0.3, true); await snap('shark close');
     // booped
-    await ev('m.Game.run.invuln = 0; m.Game.stumble({ type: "log", skin: "seal" })'); await step(page, 0.3); await snap('boop'); await step(page, 0.5); await snap('boop 2');
+    await ev('m.Game.run.invuln = 0; m.Game.stumble({ type: "log", skin: "clam" })'); await step(page, 0.3); await snap('boop'); await step(page, 0.5); await snap('boop 2');
     await until(page, 'm.Game.state === "over"', 8, false); await page.waitForTimeout(500); await snap('booped card', true);
     // bonk
     await begin(); await step(page, 1.0, true); await ev('m.Player.die("bonk")'); await step(page, 0.3); await snap('bonk'); await step(page, 1.0); await snap('seeing stars', true);

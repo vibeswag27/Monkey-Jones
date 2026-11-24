@@ -27,7 +27,7 @@ The scripts in `source/test/` drive the game in headless Chrome with Playwright.
 ## How the game is put together
 
 - **Where you run.** The home screen offers two levels, Jungle Ruins and High Tide, and remembers the last one picked (`MAPS` in `src/js/00-util.js`, saved as `map`). The whole game is rebuilt for the one chosen: `Game.setScene` runs before the track is made.
-- **High Tide.** The same ruins, deep under water for the whole run. The logs are napping seals, the boulder that chases you is an orca, and the scenery is reef (`Tide` in `70-game.js`, the sea builders in `40-scenery.js`, the seal and orca in `30-characters.js`). On its home screen a seal circles behind the runner and bolts when the chase begins.
+- **High Tide.** The same ruins, deep under water for the whole run. What you hop over are giant clams instead of logs, what chases you is a shark instead of the boulder, and the scenery is reef (`Tide` in `70-game.js`, `addClams` in `50-track.js`, the sea builders in `40-scenery.js`, `Shark` in `30-characters.js`). Seals and orcas only swim about in the background: they are playable characters, so they are never the obstacle or the chaser. On the home screen a seal circles behind a runner with legs and bolts when the chase begins.
 - **Getting harder.** Inside a run, a level is four stretches of track and you go up one at a corner. Each runs 10 % faster than the last and leaves 7 % less room between obstacles, so the difficulty compounds (the numbers are at the top of `00-util.js`). The level number is also the score multiplier, up to ×10, and the time of day moves on with it.
 - **Corners.** You come out of a turn in the lane you went in on (`Player.tryTurn`).
 - **The seal and the orca.** Two playable characters that live in High Tide and nowhere else (`sea: true` in `CHARS`). They swim instead of running: `SeaCharacter` in `30-characters.js` answers everything the game asks of a `Character`, with a leap for a jump and a dive for a slide, and the same hitbox as everyone, so no layout gets easier or harder. The Characters screen lists them only while High Tide is chosen. `Save.data.char` is the everyday runner; `Save.data.seaChar` is the swimmer picked for High Tide, if any (`runner()` in `70-game.js` decides who is up). Their names, Sealie and Orkie, are stand-ins.
@@ -40,6 +40,6 @@ Tests worth running after a change to any of these (put `MJ_MAP=tide` in front t
 - `test/levels.js 1 20 6 1600 tide` (or `ruins`): the autopilot plays every level to prove each layout can be passed.
 - `test/turn.js`: lanes through corners.
 - `test/tutorial.js`: a first-ever run and its hints, in both levels.
-- `test/homeseal.js`: the home-screen seal keeps clear of the orca when a run starts.
+- `test/homeseal.js`: the home-screen seal keeps clear of the shark when a run starts.
 - `test/charshot.js`: the swimmers on the menus, three screen shapes; checks the controls fit.
-- `test/swimmers.js`, `test/sea.js`, `test/home.js`: pictures in `shots/` for looking at.
+- `test/swimmers.js`, `test/sea.js`, `test/home.js`, `test/tidelife.js` (the shark and the clams close up): pictures in `shots/` for looking at.

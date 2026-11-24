@@ -62,7 +62,7 @@ function boot(hot) {
   Save.load(hot);
   Roster.use(Save.data.char);
   boulder = new Boulder(); scene.add(boulder.group);
-  orca = new Orca(); scene.add(orca.group);
+  shark = new Shark(); scene.add(shark.group);
   fx = new FX(scene);
 
   function resize() {
@@ -111,7 +111,7 @@ function boot(hot) {
   requestAnimationFrame(frame);
 
   // testing hooks
-  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get orca() { return orca; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); } };
+  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get shark() { return shark; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); } };
 }
 
 try {

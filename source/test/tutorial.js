@@ -19,7 +19,7 @@ const sharp = require('/opt/npm-tools/node_modules/sharp');
     }
     const end = await until(page, 'm.Game.state !== "run" || m.Game.run.turns >= 2', 60, true);
     const want = ['Swipe up to jump', 'Swipe down to slide', 'Swipe right to dodge', 'Swipe left or right to turn'];
-    const ok = seen.every((s, i) => s.on && s.hint === want[i] && s.state === 'run' && s.sea === (map === 'tide')) && end.state === 'run' && end.turns >= 2 && (map !== 'tide' || /seal/.test(seen[0].next));
+    const ok = seen.every((s, i) => s.on && s.hint === want[i] && s.state === 'run' && s.sea === (map === 'tide')) && end.state === 'run' && end.turns >= 2 && (map !== 'tide' || /clam/.test(seen[0].next));
     if (!ok) fails++;
     console.log((ok ? 'ok   ' : 'FAIL ') + map + ': ' + seen.map((s) => `"${s.hint}" → ${s.next}`).join(' | ') + ` | then ${end.turns} corners, ${end.state}`);
     await page.evaluate(() => { const m = window.__mj; if (m.Game.state === 'run') m.Player.die('bonk'); }); await until(page, 'm.Game.state === "over"', 8, false);

@@ -6,7 +6,7 @@ const sharp = require('/opt/npm-tools/node_modules/sharp');
   await step(page, 0.5);
   await page.addStyleTag({ content: '.layer{display:none!important}' });
   const shots = [];
-  for (const [kind, views] of [['seal', [[2.6, 1.0, -2.8], [-3.2, 1.4, 0.4], [0.2, 0.9, -3.4], [2.2, 2.6, 2.4]]], ['sealNap', [[2.6, 1.0, -2.8], [0.2, 0.9, -3.4]]], ['orca', [[5.5, 1.2, -5.5], [-6.5, 1.5, 1.0], [0.5, 0.6, -7.5], [4.5, 4.5, 5.5]]]]) {
+  for (const [kind, views] of [['seal', [[2.6, 1.0, -2.8], [-3.2, 1.4, 0.4], [0.2, 0.9, -3.4], [2.2, 2.6, 2.4]]], ['orca', [[5.5, 1.2, -5.5], [-6.5, 1.5, 1.0], [0.5, 0.6, -7.5], [4.5, 4.5, 5.5]]]]) {
     for (const v of views) {
       await page.evaluate(({ kind, v }) => {
         const m = window.__mj, sc = m.scene, cam = m.camera;

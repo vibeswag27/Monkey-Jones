@@ -13,8 +13,8 @@ const sharp = require('/opt/npm-tools/node_modules/sharp');
     const ev = (src) => page.evaluate((src) => new Function('m', src)(window.__mj), src);
     const state = () => ev(`const q = (id) => document.getElementById(id); return { y: +m.Tide.y.toFixed(2), under: m.Tide.under, wet: m.Tide.wet, seaOn: q("sea").classList.contains("on"), fogFar: Math.round(m.scene.fog.far),
       st: m.Game.state, level: m.Game.run.level, map: m.Save.data.map, seaSegs: [m.world.cur, m.world.cur.kids.L, m.world.cur.kids.R].filter(Boolean).map((s) => !!s.sea).join(","),
-      seals: m.world.cur.obstacles.filter((o) => o.skin === "seal").length, ruins: q("mapRuins").getAttribute("aria-checked"), tide: q("mapTide").getAttribute("aria-checked"), stored: (JSON.parse(localStorage.getItem("monkeyjones.v1") || "{}")).map }`);
-    const dry = (s) => !s.under && !s.wet && !s.seaOn && s.y === -6.5 && s.fogFar === 168 && !/true/.test(s.seaSegs) && s.seals === 0;
+      clams: m.world.cur.obstacles.filter((o) => o.skin === "clam").length, ruins: q("mapRuins").getAttribute("aria-checked"), tide: q("mapTide").getAttribute("aria-checked"), stored: (JSON.parse(localStorage.getItem("monkeyjones.v1") || "{}")).map }`);
+    const dry = (s) => !s.under && !s.wet && !s.seaOn && s.y === -6.5 && s.fogFar === 168 && !/true/.test(s.seaSegs) && s.clams === 0;
     const wet = (s) => s.under && s.wet && s.seaOn && s.y === 15 && s.fogFar < 100 && !/false/.test(s.seaSegs);
     const snap = async (label) => { await new Promise((r) => setTimeout(r, 350)); await page.evaluate(() => window.__mj.render()); shots.push({ label: `${T} ${label}`, buf: await page.screenshot({ type: 'png' }), w, h }); };
     // a real finger on the middle of the button (whatever is on top there gets the touch), then time for the wipe
@@ -47,14 +47,14 @@ const sharp = require('/opt/npm-tools/node_modules/sharp');
     await tap('mapTide'); s = await state();
     check(`${T} tapping High Tide floods the home screen and is remembered`, wet(s) && s.st === 'title' && s.map === 'tide' && s.tide === 'true' && s.ruins === 'false' && s.stored === 'tide', JSON.stringify(s));
     f = await fits(); check(`${T} home screen still fits under water`, !f.out.length && !f.hit.length, JSON.stringify(f)); await snap('home: High Tide');
-    // 3. Run: under water from the first step, the orca behind, seals to hop
+    // 3. Run: under water from the first step, the shark behind, clams to hop
     await ev('m.Save.data.runs = 5'); await poke('btnRun'); await step(page, 0.5, false); s = await state();
     check(`${T} High Tide: under water as the run begins`, wet(s) && s.st === 'intro', JSON.stringify(s));
     await until(page, 'm.Game.state === "run"', 5, false);
-    const chase = await ev('return { orca: m.orca.group.visible, boulder: m.boulder.group.visible }');
+    const chase = await ev('return { shark: m.shark.group.visible, boulder: m.boulder.group.visible }');
     await step(page, 1.2, true); s = await state();
     const name1 = await page.evaluate(() => document.getElementById('levelName').textContent);
-    check(`${T} High Tide: level 1 is called "High Tide"; the orca gives chase, not the boulder`, wet(s) && s.level === 1 && name1 === 'High Tide' && chase.orca && !chase.boulder, JSON.stringify({ s, name1, chase }));
+    check(`${T} High Tide: level 1 is called "High Tide"; the shark gives chase, not the boulder`, wet(s) && s.level === 1 && name1 === 'High Tide' && chase.shark && !chase.boulder, JSON.stringify({ s, name1, chase }));
     // 4. pause freezes everything
     await ev('m.Game.pause()'); const p0 = await ev('return m.Player.s'); await step(page, 1.0, false);
     check(`${T} paused: nothing moves`, (await state()).st === 'pause' && (await ev('return m.Player.s')) === p0); await snap('paused under water');
@@ -62,11 +62,12 @@ const sharp = require('/opt/npm-tools/node_modules/sharp');
     // 5. the level cannot be changed in the middle of a run
     await ev('m.UI.pickMap("ruins")'); await page.waitForTimeout(350); s = await state();
     check(`${T} the level cannot change in the middle of a run`, s.map === 'tide' && wet(s) && s.st === 'run', JSON.stringify(s));
-    // 6. caught by the orca: the card fits
-    await ev('m.Game.run.invuln = 0; m.Game.run.danger = 0; m.Game.stumble({ type: "log", skin: "seal" }); m.Game.run.invuln = 0; m.Game.stumble({ type: "log", skin: "seal" });');
+    // 6. caught by the shark: the card fits
+    await ev('m.Game.run.invuln = 0; m.Game.run.danger = 0; m.Game.stumble({ type: "log", skin: "clam" }); m.Game.run.invuln = 0; m.Game.stumble({ type: "log", skin: "clam" });');
     await until(page, 'm.Game.state === "over"', 8, false); await snap('booped card');
     const card = await page.evaluate(() => { const r = document.querySelector('#over .card').getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, title: document.getElementById('overTitle').textContent }; });
-    check(`${T} game-over card fits on screen and says Booped!`, card.top >= 0 && card.bottom <= card.vh && card.title === 'Booped!', JSON.stringify(card));
+    const sub = await page.evaluate(() => document.getElementById('overSub').textContent);
+    check(`${T} game-over card fits on screen and says the shark booped him`, card.top >= 0 && card.bottom <= card.vh && card.title === 'Booped!' && sub === 'The shark caught up with Monkey Jones.', JSON.stringify(card) + ' ' + sub);
     // 7. Run again: still High Tide
     await tap('btnAgain'); s = await state();
     check(`${T} "Run again" stays in High Tide, back at level 1`, wet(s) && s.level === 1 && (s.st === 'intro' || s.st === 'run'), JSON.stringify(s));
@@ -80,13 +81,13 @@ const sharp = require('/opt/npm-tools/node_modules/sharp');
     check(`${T} tapping Jungle Ruins drains the home screen and is remembered`, dry(s) && s.st === 'title' && s.map === 'ruins' && s.ruins === 'true' && s.stored === 'ruins', JSON.stringify(s)); await snap('home: back in the ruins');
     await poke('btnRun'); await until(page, 'm.Game.state === "run"', 5, false);
     const land = await page.evaluate(() => { // autopilot through four levels, forgiving any slip, watching the water the whole way
-      const m = window.__mj, G = m.Game, dt = 1 / 60; let t = 0, top = -99, seals = 0, sea = 0, orca = false, names = {};
+      const m = window.__mj, G = m.Game, dt = 1 / 60; let t = 0, top = -99, clams = 0, sea = 0, shark = false, names = {};
       while (G.state === 'run' && G.run.level < 5 && t < 400) { G.run.invuln = 1; G.run.danger = 0; m.Bot.think(); G.update(dt); t += dt;
-        top = Math.max(top, m.Tide.y); if (m.Tide.wet || m.Tide.under) sea++; seals += m.Player.seg.obstacles.filter((o) => o.skin === 'seal').length; if (m.Player.seg.sea) sea++;
-        if (m.orca.group.visible) orca = true; names[G.run.level] = document.getElementById('levelName').textContent; }
-      return { level: G.run.level, top, seals, sea, orca, names: Object.values(names).join(' > '), state: G.state, death: G.death && G.death.type, seaOn: document.getElementById('sea').classList.contains('on') };
+        top = Math.max(top, m.Tide.y); if (m.Tide.wet || m.Tide.under) sea++; clams += m.Player.seg.obstacles.filter((o) => o.skin === 'clam').length; if (m.Player.seg.sea) sea++;
+        if (m.shark.group.visible) shark = true; names[G.run.level] = document.getElementById('levelName').textContent; }
+      return { level: G.run.level, top, clams, sea, shark, names: Object.values(names).join(' > '), state: G.state, death: G.death && G.death.type, seaOn: document.getElementById('sea').classList.contains('on') };
     });
-    check(`${T} Jungle Ruins: four levels deep and never a drop of sea`, land.level === 5 && land.top === -6.5 && !land.seals && !land.sea && !land.orca && !land.seaOn && land.names === 'Jungle Ruins > Sunset Ruins > Moonlit Ruins > Dawn Ruins > Jungle Ruins', JSON.stringify(land));
+    check(`${T} Jungle Ruins: four levels deep and never a drop of sea`, land.level === 5 && land.top === -6.5 && !land.clams && !land.sea && !land.shark && !land.seaOn && land.names === 'Jungle Ruins > Sunset Ruins > Moonlit Ruins > Dawn Ruins > Jungle Ruins', JSON.stringify(land));
     await snap('ruins, level 5');
     // 10. the choice survives closing and opening the game
     await ev('if (m.Game.state === "run") m.Player.die("bonk")'); await until(page, 'm.Game.state === "over"', 8, false); await tap('btnHome2'); await tap('mapTide');

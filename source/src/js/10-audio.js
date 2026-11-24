@@ -93,13 +93,6 @@ const Sound = (() => {
     o.connect(g); g.connect(sfxBus); o.start(t); l.start(t); o.stop(t + 0.7); l.stop(t + 0.7);
   }
 
-  function whale(delay) { // a rising, falling call
-    if (!live()) return;
-    const t = ctx.currentTime + (delay || 0), o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(520, t); o.frequency.exponentialRampToValueAtTime(1280, t + 0.3); o.frequency.exponentialRampToValueAtTime(740, t + 0.8);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.34, t + 0.06); g.gain.setValueAtTime(0.34, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.86);
-    o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.9);
-  }
 
   const semi = (f, s) => f * Math.pow(2, s / 12);
   const sfx = {
@@ -110,8 +103,8 @@ const Sound = (() => {
       if (under) for (let i = 0; i < 5; i++) { const f = 420 + Math.random() * 500; tone('sine', f, f * 2, 0.09, 0.2, 0.08 + i * 0.07); }
     },
     bloop() { const f = 380 + Math.random() * 520; tone('sine', f, f * 1.9, 0.1, 0.11); },
-    seal() { for (const d of [0, 0.17]) { tone('sawtooth', 350 - d * 120, 245, 0.13, 0.3, d); tone('square', 175 - d * 60, 122, 0.13, 0.11, d); } },
-    orca() { whale(0); tone('sine', 1500, 2200, 0.12, 0.12, 0.34); },
+    clam() { tone('square', 840, 250, 0.055, 0.2); tone('square', 620, 190, 0.07, 0.18, 0.1); hiss(0.07, 0.22, 'bandpass', 1900, 700, 1.3); }, // a shell clacking shut, twice
+    shark() { tone('sine', 104, 58, 0.55, 0.5); tone('triangle', 208, 96, 0.4, 0.14, 0.03); hiss(0.6, 0.2, 'lowpass', 520, 110, 0.7); },           // something big coming through the water
     boop() { tone('sine', 260, 620, 0.12, 0.6); tone('triangle', 520, 1240, 0.1, 0.16, 0.01); boing(0.06); hiss(0.25, 0.4, 'lowpass', 1400, 300, 0.7); },
     jump() { tone('sine', 310, 660, 0.19, 0.5); tone('triangle', 620, 1100, 0.12, 0.12, 0.02); },
     spring() { tone('sine', 250, 900, 0.27, 0.5); tone('triangle', 500, 1500, 0.2, 0.14, 0.02); boing(0.02); },

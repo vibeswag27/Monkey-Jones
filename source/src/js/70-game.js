@@ -1,5 +1,5 @@
 // ───────────────────────── game: save data, camera, player, rules ─────────────────────────
-let renderer, scene, camera, world, sky, monkey, boulder, orca, fx;
+let renderer, scene, camera, world, sky, monkey, boulder, shark, fx;
 const _look = new THREE.Vector3(), _nose = new THREE.Vector3();
 const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* not available */ } };
 
@@ -276,7 +276,7 @@ const Game = {
     return { dist: 0, score: 0, nanas: 0, mult: 1, level: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
       magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1 } };
   },
-  closeGap() { return Tide.wet ? 3.2 : Cam.portrait ? 4.6 : 4.9; }, // the orca is lower than the boulder, so it comes in closer to be seen
+  closeGap() { return Tide.wet ? 3.2 : Cam.portrait ? 4.6 : 4.9; }, // the shark is lower than the boulder, so it comes in closer to be seen
 
   // ── screens ──
   toTitle() {
@@ -304,7 +304,7 @@ const Game = {
     this.camFrom = quick ? Object.assign(Cam.preset('run'), { a: 1.15, dist: 5.2, height: 2.4 }) : Object.assign({}, Cam.c);
     this.camTo = Cam.preset('run');
     Cam.snap(this.camFrom);
-    Sound.startMusic(); Sound.muffle(false); if (Tide.wet) Sound.sfx.orca(); else Sound.sfx.rumbleStart();
+    Sound.startMusic(); Sound.muffle(false); if (Tide.wet) Sound.sfx.shark(); else Sound.sfx.rumbleStart();
     for (const c of world.cur.critters || []) if (c.home) c.flee(this.time); // the seal by the door knows what is coming out of it
     UI.setState('intro'); UI.hud(this.run, true);
     if (!quick) fx.sparkle(Player.wx, 1.6, Player.wz, 8, 0xffe45c);
@@ -323,7 +323,7 @@ const Game = {
     MAP = MAPS[Save.data.map] ? Save.data.map : 'ruins';
     const sea = atSea();
     this.skyP = 0; this.seaK = sea ? 1 : 0; Tide.flood(sea); sky.setLook(0, Tide.sub, this.homeK); fx.clear();
-    orca.group.visible = false; Sound.sea(sea); UI.sea(sea);
+    shark.group.visible = false; Sound.sea(sea); UI.sea(sea);
   },
   pause() { if (this.state !== 'run' && this.state !== 'count') return; this.state = 'pause'; UI.setState('pause'); UI.stopCount(); Sound.sleep(); },
   resume() {
@@ -353,8 +353,8 @@ const Game = {
     run.danger = 5.5; run.slow = 0.45; run.invuln = 0.75; P.stumbleT = 0;
     monkey.setExpr('squint', 0.75); Sound.sfx.stumble(); Cam.kick(0.55); buzz(40);
     puff(P.wx, P.wz, 7);
-    if (Tide.wet) Sound.sfx.orca(); // somewhere behind, something has noticed
-    if (o && o.skin === 'seal') { Sound.sfx.seal(); fx.bubbles(P.wx, 0.7, P.wz, 8, 1.1); } // a rude awakening
+    if (Tide.wet) Sound.sfx.shark(); // somewhere behind, something has noticed
+    if (o && o.skin === 'clam') { Sound.sfx.clam(); fx.bubbles(P.wx, 0.7, P.wz, 8, 1.1); } // it snaps shut in a huff
     else if (o && o.type !== 'pillar') fx.debris(P.wx, 0.1, P.wz, 5, o.type === 'log' ? ENV.wood : 0x9aa3a8);
   },
   hitSolid(o) {
@@ -530,7 +530,7 @@ const Game = {
       if (t > 2.0) this.over();
       mode = d.landed ? 'bonk' : 'fall';
       Cam.lookAt = _look.set(P.wx, Math.max(P.y, WATER_Y) + 0.6, P.wz);
-    } else if (d.type === 'boop') { // the orca noses him clean off his feet
+    } else if (d.type === 'boop') { // the shark noses him clean off his feet
       const reach = 1.8;
       if (!d.squashed) {
         this.bGap = Math.max(reach, this.bGap - 19 * dt);
@@ -543,7 +543,7 @@ const Game = {
       } else {
         const u = clamp((t - d.tq) / 0.95, 0, 1);
         P.s = d.s1 + d.fly * easeOut(u); P.y = Math.sin(Math.PI * u) * 2.7; // up and over in a slow arc, then down on his back
-        this.bGap = damp(this.bGap + (P.s - (d.sp === undefined ? d.s1 : d.sp)), 3.1, 2.6, dt); d.sp = P.s; // the orca noses after him and hovers there, wriggling with glee
+        this.bGap = damp(this.bGap + (P.s - (d.sp === undefined ? d.s1 : d.sp)), 3.1, 2.6, dt); d.sp = P.s; // the shark noses after him and hovers there, wriggling with glee
         if (u >= 1 && !d.landed) { d.landed = true; P.y = 0; monkey.bounce(0.72); monkey.stars.visible = true; fx.dust(P.wx, 0, P.wz, 8); Sound.sfx.land(); }
         if (t > d.tq + 2.1) this.over();
       }
@@ -582,14 +582,14 @@ const Game = {
     b.x = damp(b.x, tx, 16, dt); b.z = damp(b.z, tz, 16, dt);
     this.bYaw = dampAngle(this.bYaw, seg.yaw, 8, dt);
     const moved = Math.hypot(b.x - ox, b.z - oz), shown = this.bGap < 13.5 && this.state !== 'title';
-    // On land a boulder rolls after him. Under water the orca takes over (if one is in sight at the time, they swap in a blink).
+    // On land a boulder rolls after him. Under water a shark takes over (if one is in sight at the time, they swap in a blink).
     const k = this.seaK = damp(this.seaK, Tide.wet ? 1 : 0, 10, dt);
     boulder.group.position.set(b.x, 0, b.z); boulder.group.rotation.y = this.bYaw;
     boulder.roll(moved);
     boulder.group.visible = shown && k < 0.97; boulder.group.scale.setScalar(Math.max(0.01, 1 - k));
-    orca.group.position.set(b.x, 0, b.z); orca.group.rotation.y = this.bYaw;
-    orca.group.visible = shown && k > 0.03; orca.group.scale.setScalar(Math.max(0.01, k));
-    if (orca.group.visible) orca.update(dt, this.time, dt > 0 ? moved / dt : 0, this.death && this.death.type === 'boop' && this.death.squashed ? 1 : 0);
+    shark.group.position.set(b.x, 0, b.z); shark.group.rotation.y = this.bYaw;
+    shark.group.visible = shown && k > 0.03; shark.group.scale.setScalar(Math.max(0.01, k));
+    if (shark.group.visible) shark.update(dt, this.time, dt > 0 ? moved / dt : 0, this.death && this.death.type === 'boop' && this.death.squashed ? 1 : 0);
     const near = clamp((13 - Math.abs(this.bGap)) / 9, 0, 1);
     Sound.rumble(this.state === 'over' || this.state === 'title' ? 0 : near * 0.55);
     if (near > 0.55 && (this.state === 'run' || this.state === 'intro')) Cam.kick(0.07 + (near - 0.55) * 0.2);

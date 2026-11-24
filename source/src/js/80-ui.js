@@ -44,7 +44,7 @@ const UI = (() => {
     fall: ['Splash!', (n) => n + ' went for a swim.'],
     flat: ['Flattened!', (n) => 'The boulder caught up with ' + n + '.'],
     sink: ['Glub!', (n, c) => (c.swims ? 'The undertow pulled ' + n + ' down.' : n + ' sank to the sea bed.')],
-    boop: ['Booped!', (n, c) => (c.orca ? 'A much bigger orca' : 'The orca') + ' caught up with ' + n + '.'],
+    boop: ['Booped!', (n) => 'The shark caught up with ' + n + '.'],
   };
   let browseAt = 0;
   const cast = () => CHAR_ORDER.filter((k) => !CHARS[k].sea || atSea()); // who can be picked for the level that is chosen: the seal and the orca only show up in High Tide

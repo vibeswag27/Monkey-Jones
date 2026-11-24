@@ -135,7 +135,7 @@ function genSegment(seg, W) {
     if (seg.first) line(7.6, 19, 1);
     const end = seg.len - HJ - Math.max(11, v * 0.8);
     const tGap = levelGap(L);
-    const hop = seg.sea ? 1.5 : 1; // under water the things to hop over are seals, so there are more of them
+    const hop = seg.sea ? 1.5 : 1; // under water there is more to hop over (giant clams) and a little less of everything else
     let last = '';
     while (s < end - 2) {
       const on = (min, w) => (prog >= min ? w : 0);
@@ -190,16 +190,22 @@ function addLogMesh(ob, ol, rng, xc, z, len) {
   for (let i = 0; i < bands; i++) ob.add(SHAPE.cyl12, M(xc + (i - (bands - 1) / 2) * len * 0.3 + rng.range(-0.15, 0.15), r, z, 2 * r + 0.03, 0.16, 2 * r + 0.03, 0, 0, rz), ENV.woodDark);
   ob.add(SHAPE.cone4, M(xc + rng.range(-0.3, 0.3) * len, 2 * r + 0.16, z, 0.4, 0.5, 0.1, 0, rng.f() * 3, 0.5), ENV.leaf[0]);
 }
-// Under water, what lies across the path is a row of napping seals: one to a lane, nose to tail.
-function addSeals(ob, ol, rng, xc, z, len) {
-  const G = seaGeo(), n = Math.max(1, Math.round(len / 1.84)), step = len / n, k = 0.92;
-  let face = rng.chance(0.5) ? 1 : -1;
+// Under water, what lies across the path is a row of giant clams, one to a lane, each gaping towards you with a pearl inside.
+const CLAM_SHELL = [0xf7c9dc, 0xd9c8f5, 0xfbe6c4, 0xbfe8dc], CLAM_FLESH = [0x2fc7c9, 0x7b6cf0, 0x3aa0ff, 0xf06ca8];
+function addClams(ob, ol, glow, rng, xc, z, len) {
+  const G = seaGeo(), n = Math.max(1, Math.round(len / 1.84)), step = len / n, HY = 0.27, HZ = -0.5, GAPE = 0.5;
+  let ci = rng.int(0, 3);
   for (let i = 0; i < n; i++) {
-    const x = xc + (i - (n - 1) / 2) * step - face * 0.135 * k; // the model's middle sits a little behind its origin
-    const yaw = (face * Math.PI) / 2 + rng.range(-0.09, 0.09), dz = rng.range(-0.07, 0.07);
-    ob.add(G.sealNap, M(x, 0, z + dz, k, k, k, 0, yaw, 0));
-    ol.add(G.sealNapInk, M(x, 0, z + dz, k, k, k, 0, yaw, 0));
-    if (rng.chance(0.7)) face = -face;
+    const x = xc + (i - (n - 1) / 2) * step, yaw = rng.range(-0.14, 0.14), dz = rng.range(-0.06, 0.06), k = rng.range(0.95, 1.02), c = Math.cos(yaw), sn = Math.sin(yaw);
+    const at = (lx, ly, lz) => [x + (lx * c + lz * sn) * k, ly * k, z + dz + (-lx * sn + lz * c) * k]; // a point of the clam, out in the stretch
+    const shell = CLAM_SHELL[ci++ % 4], flesh = rng.pick(CLAM_FLESH), [hx, hy, hz] = at(0, HY, HZ);
+    for (const [rx, rz] of [[0, Math.PI], [-GAPE, 0]]) { // the lower half lies dome down; the upper one is hinged open at the back
+      ob.add(G.clamValve, M(hx, hy, hz, k, k, k, rx, yaw, rz), shell);
+      ol.add(G.clamValveInk, M(hx, hy, hz, k, k, k, rx, yaw, rz));
+    }
+    let p = at(0, 0.39, 0.04); ob.add(SHAPE.sph, M(p[0], p[1], p[2], 1.44 * k, 0.34 * k, 0.86 * k, 0, yaw, 0), flesh);  // the soft part, bright between the lips
+    for (const lx of [-0.5, -0.17, 0.17, 0.5]) { p = at(lx, 0.48 + 0.05 * (1 - Math.abs(lx) * 2), 0.4 - Math.abs(lx) * 0.16); ob.add(SHAPE.sphLo, M(p[0], p[1], p[2], 0.11 * k, 0.07 * k, 0.11 * k), shade(flesh, 1.45)); }
+    p = at(0, 0.55, 0.26); glow.add(SHAPE.sph, M(p[0], p[1], p[2], 0.3 * k, 0.3 * k, 0.3 * k), 0xfffdf2);               // the pearl
   }
 }
 function addRubbleMesh(ob, ol, rng, x, z) {
@@ -302,7 +308,10 @@ function buildSegment(seg, W) {
   for (const o of seg.obstacles) {
     const a = ob.n, b = ol.n, c = glow.n, z = -o.s;
     if (o.type === 'pillar') addTotem(ob, ol, glow, laneX(o.lane), z);
-    else if (o.type === 'log') { (sea ? addSeals : addLogMesh)(ob, ol, rng, (laneX(o.l0) + laneX(o.l1)) / 2, z, (o.l1 - o.l0) * LANE_W + 1.72); if (sea) o.skin = 'seal'; }
+    else if (o.type === 'log') {
+      const xc = (laneX(o.l0) + laneX(o.l1)) / 2, len = (o.l1 - o.l0) * LANE_W + 1.72;
+      if (sea) { addClams(ob, ol, glow, rng, xc, z, len); o.skin = 'clam'; } else addLogMesh(ob, ol, rng, xc, z, len);
+    }
     else if (o.type === 'rubble') addRubbleMesh(ob, ol, rng, laneX(o.lane), z);
     else if (o.type === 'beam') addBeamMesh(ob, ol, glow, rng, z);
     o.rOb = [a, ob.n]; o.rOl = [b, ol.n]; o.rGl = [c, glow.n];

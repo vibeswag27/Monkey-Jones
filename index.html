@@ -584,13 +584,6 @@ const Sound = (() => {
     o.connect(g); g.connect(sfxBus); o.start(t); l.start(t); o.stop(t + 0.7); l.stop(t + 0.7);
   }
 
-  function whale(delay) { // a rising, falling call
-    if (!live()) return;
-    const t = ctx.currentTime + (delay || 0), o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(520, t); o.frequency.exponentialRampToValueAtTime(1280, t + 0.3); o.frequency.exponentialRampToValueAtTime(740, t + 0.8);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.34, t + 0.06); g.gain.setValueAtTime(0.34, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.86);
-    o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.9);
-  }
 
   const semi = (f, s) => f * Math.pow(2, s / 12);
   const sfx = {
@@ -601,8 +594,8 @@ const Sound = (() => {
       if (under) for (let i = 0; i < 5; i++) { const f = 420 + Math.random() * 500; tone('sine', f, f * 2, 0.09, 0.2, 0.08 + i * 0.07); }
     },
     bloop() { const f = 380 + Math.random() * 520; tone('sine', f, f * 1.9, 0.1, 0.11); },
-    seal() { for (const d of [0, 0.17]) { tone('sawtooth', 350 - d * 120, 245, 0.13, 0.3, d); tone('square', 175 - d * 60, 122, 0.13, 0.11, d); } },
-    orca() { whale(0); tone('sine', 1500, 2200, 0.12, 0.12, 0.34); },
+    clam() { tone('square', 840, 250, 0.055, 0.2); tone('square', 620, 190, 0.07, 0.18, 0.1); hiss(0.07, 0.22, 'bandpass', 1900, 700, 1.3); }, // a shell clacking shut, twice
+    shark() { tone('sine', 104, 58, 0.55, 0.5); tone('triangle', 208, 96, 0.4, 0.14, 0.03); hiss(0.6, 0.2, 'lowpass', 520, 110, 0.7); },           // something big coming through the water
     boop() { tone('sine', 260, 620, 0.12, 0.6); tone('triangle', 520, 1240, 0.1, 0.16, 0.01); boing(0.06); hiss(0.25, 0.4, 'lowpass', 1400, 300, 0.7); },
     jump() { tone('sine', 310, 660, 0.19, 0.5); tone('triangle', 620, 1100, 0.12, 0.12, 0.02); },
     spring() { tone('sine', 250, 900, 0.27, 0.5); tone('triangle', 500, 1500, 0.2, 0.14, 0.02); boing(0.02); },
@@ -1407,9 +1400,21 @@ function fishGeo(cols) {
 }
 // Ink outline geometry that a GeoBuilder can also merge (it needs normals).
 function inkOf(geo, t) { const g = outlineOf(geo, t); g.setAttribute('normal', geo.attributes.normal); return g; }
+// One half of a giant clam shell, lying flat: hinge along the X axis at the origin, the lip a metre out towards +Z, dome side up.
+// Built white (with darker ribs), so each clam can be given its own colour.
+function clamValveGeo() {
+  const gb = new GeoBuilder();
+  gb.add(SHAPE.sphHi, M(0, 0.06, 0.5, 1.7, 0.36, 1.06), 0xffffff);
+  for (const d of [-0.62, -0.31, 0, 0.31, 0.62]) {
+    const sn = Math.sin(d), cs = Math.cos(d);
+    gb.add(SHAPE.sph, M(sn * 0.5, 0.09, cs * 0.5, 0.22, 0.34, 1.02, 0, d, 0), [0.84, 0.84, 0.84]);   // ribs fanning out from the hinge
+    gb.add(SHAPE.sph, M(sn * 0.99, 0.03, cs * 0.99, 0.34, 0.15, 0.2, 0, d, 0), 0xffffff);            // and a scallop at the end of each, for a wavy lip
+  }
+  return gb.build();
+}
 function seaGeo() { // built the first time the tide comes in
-  if (!GEO.sealNap) {
-    GEO.sealNap = sealGeo(true); GEO.sealNapInk = inkOf(GEO.sealNap, 0.03);
+  if (!GEO.seal) {
+    GEO.clamValve = clamValveGeo(); GEO.clamValveInk = inkOf(GEO.clamValve, 0.03);
     GEO.seal = sealGeo(false); GEO.sealInk = inkOf(GEO.seal, 0.03);
     GEO.orca = orcaGeo('all'); GEO.orcaInk = inkOf(GEO.orca, 0.04);
     GEO.fishA = fishGeo([0xff8a3c, 0xffb347, 0xff6f61]); GEO.fishB = fishGeo([0xffe066, 0x5fd4f2, 0x7ae0c4]);
@@ -1418,26 +1423,64 @@ function seaGeo() { // built the first time the tide comes in
 }
 const sharedMesh = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.userData.sharedGeo = true; return m; };
 
-// The orca that takes over from the boulder under water: it swims after you, and if it catches you, you get booped.
-class Orca {
+// The shark, nose towards -Z, about 4.4 m long. part: 'body', or 'tail' (the piece that sweeps from side to side, built round its hinge).
+const SHARK = { skin: 0x6b90ad, fin: 0x567892, belly: 0xf3f5ef, gum: 0x5a2233, tooth: 0xffffff, pupil: 0x15171d };
+function sharkGeo(part) {
+  const gb = new GeoBuilder(), c = SHARK;
+  if (part !== 'tail') {
+    gb.add(SHAPE.sphHi, M(0, 0, 0, 1.6, 1.34, 2.9), c.skin);                                                   // the bulk of it
+    gb.add(SHAPE.sphHi, M(0, 0.02, -0.95, 1.3, 1.02, 1.75), c.skin);                                           // the head, running out to a blunt point
+    gb.add(SHAPE.sphHi, M(0, -0.2, -0.3, 1.46, 1.02, 2.5), c.belly);                                           // white underneath
+    gb.add(SHAPE.sph, M(0, -0.16, -1.05, 1.12, 0.78, 1.4), c.belly);                                           // and a white chin
+    gb.add(taperTube([v3(0, 0.02, 0.9), v3(0, 0.05, 1.15), v3(0, 0.07, 1.4)], 6, 0.56, 0.34, 12), IDENT, c.skin);
+    gb.add(SHAPE.sph, M(0, 0.07, 1.4, 0.68, 0.68, 0.46), c.skin);
+    gb.add(SHAPE.cone4, M(0, 1.0, 0.2, 0.26, 1.1, 0.95, 0.45, 0, 0), c.fin);                                   // the fin: a triangle, where the orca's is a round paddle (thick enough to see from behind)
+    _v.set(0, -0.07, -1).normalize();                                                                          // a pointed snout that juts out over the mouth: from above, the shape that says shark
+    gb.add(SHAPE.coneS, Mdir(0, 0.12, -1.0, _v, 1.24, 1.22, 0.8), c.skin);
+    gb.add(SHAPE.coneS, Mdir(0, 0.04, -1.0, _v, 1.16, 1.14, 0.78), c.belly);                                   // white on the underside of it too
+    // a wide grin with a row of little teeth, and a slanted brow over each eye: more mischief than menace
+    const grin = new THREE.CatmullRomCurve3([v3(-0.6, -0.12, -1.05), v3(-0.5, -0.3, -1.25), v3(-0.26, -0.4, -1.5), v3(0, -0.42, -1.62), v3(0.26, -0.4, -1.5), v3(0.5, -0.3, -1.25), v3(0.6, -0.12, -1.05)]);
+    gb.add(softG(new THREE.TubeGeometry(grin, 24, 0.05, 6, false)), IDENT, c.gum);
+    for (const u of [0.2, 0.31, 0.42, 0.5, 0.58, 0.69, 0.8]) { const p = grin.getPoint(u); gb.add(SHAPE.cone4, M(p.x * 1.02, p.y - 0.085, p.z * 1.02, 0.1, 0.13, 0.07, Math.PI, Math.atan2(p.x, -p.z), 0), c.tooth); }
+    for (const sx of [-1, 1]) {
+      gb.add(SHAPE.sph, M(sx * 0.52, 0.2, -1.3, 0.22, 0.24, 0.22), c.belly);                                   // eye
+      gb.add(SHAPE.sph, M(sx * 0.58, 0.19, -1.37, 0.12, 0.13, 0.12), c.pupil);
+      gb.add(SHAPE.sph, M(sx * 0.49, 0.335, -1.3, 0.34, 0.11, 0.2, 0, sx * -0.55, sx * 0.42), c.fin);          // a heavy brow, low on the inside
+      for (let i = 0; i < 3; i++) gb.add(SHAPE.box, M(sx * (0.752 + i * 0.012), 0.0, -0.62 + i * 0.15, 0.03, 0.44, 0.04, 0.12, 0, sx * 0.12), c.fin); // gill slits
+      _v.set(sx * 0.78, -0.42, 0.46).normalize();
+      gb.add(SHAPE.cone4, Mdir(sx * 0.6, -0.26, -0.4, _v, 0.12, 1.05, 0.62), c.fin);                           // pectoral fins, swept back
+    }
+  }
+  if (part !== 'body') {
+    const z0 = part === 'tail' ? -1.4 : 0;
+    gb.add(taperTube([v3(0, 0.07, 1.4 + z0), v3(0, 0.1, 1.75 + z0), v3(0, 0.12, 2.05 + z0)], 6, 0.34, 0.14, 10), IDENT, c.skin);
+    _v.set(0, 0.8, 0.6).normalize(); gb.add(SHAPE.cone4, Mdir(0, 0.1, 1.98 + z0, _v, 0.12, 1.15, 0.56), c.fin);   // tail fin: tall upper lobe …
+    _v.set(0, -0.74, 0.67).normalize(); gb.add(SHAPE.cone4, Mdir(0, 0.12, 1.98 + z0, _v, 0.11, 0.72, 0.46), c.fin); // … and a shorter lower one
+  }
+  return gb.build();
+}
+
+// What comes after you in High Tide instead of the boulder: a shark. If it catches you, you get booped.
+class Shark {
   constructor() {
     this.group = new THREE.Group(); this.group.visible = false;
-    const swim = this.swim = new THREE.Group(); swim.position.set(0, 1.0, 0.3); this.group.add(swim);
-    const body = orcaGeo('body'), tail = orcaGeo('tail');
-    const b = new THREE.Mesh(body, MAT.char); b.add(new THREE.Mesh(outlineOf(body, 0.04), MAT.inkDark)); swim.add(b);
-    this.tail = new THREE.Group(); this.tail.position.set(0, 0, 1.3); swim.add(this.tail);
-    const tm = new THREE.Mesh(tail, MAT.char); tm.add(new THREE.Mesh(outlineOf(tail, 0.04), MAT.inkDark)); this.tail.add(tm);
+    const swim = this.swim = new THREE.Group(); swim.position.set(0, 1.0, 0.7); this.group.add(swim); // set back, so the tip of its nose is where the catching happens
+    const body = sharkGeo('body'), tail = sharkGeo('tail');
+    const b = new THREE.Mesh(body, MAT.char); b.add(new THREE.Mesh(outlineOf(body, 0.04), MAT.ink)); swim.add(b);
+    this.tail = new THREE.Group(); this.tail.position.set(0, 0, 1.4); swim.add(this.tail);
+    const tm = new THREE.Mesh(tail, MAT.char); tm.add(new THREE.Mesh(outlineOf(tail, 0.04), MAT.ink)); this.tail.add(tm);
     this.shadow = sharedMesh(GEO.disc, MAT.shadow);
-    this.shadow.scale.set(2.4, 1, 4.2); this.shadow.position.set(0, 0.03, 0.3); this.shadow.renderOrder = 2;
+    this.shadow.scale.set(2.3, 1, 4.5); this.shadow.position.set(0, 0.03, 0.75); this.shadow.renderOrder = 2;
     this.group.add(this.shadow);
-    this.ph = 0; this.wig = 0;
+    this.ph = 0;
   }
   // v: how fast it is moving (m/s). glee: 0…1 after a boop, when it wriggles with delight.
   update(dt, t, v, glee) {
     this.ph += dt * (4.2 + Math.min(v, 30) * 0.22);
     const s = Math.sin(this.ph), g = glee || 0;
-    this.tail.rotation.x = s * 0.42;
-    this.swim.rotation.x = Math.sin(this.ph - 1.1) * 0.07 - g * 0.25;
+    this.tail.rotation.y = s * 0.46;                                        // a shark's tail goes from side to side
+    this.swim.rotation.y = Math.sin(this.ph - 1.1) * 0.08;                  // and the rest of it snakes a little the other way
+    this.swim.rotation.x = -g * 0.25;
     this.swim.rotation.z = Math.sin(t * 1.3) * 0.05 + g * Math.sin(t * 13) * 0.22;
     this.swim.position.y = 1.0 + Math.sin(t * 1.9) * 0.1 + g * 0.5;
   }
@@ -1471,7 +1514,7 @@ class Swimmer {
 
 // ───────────────────────── the seal and the orca as runners ─────────────────────────
 // Sea-only characters. They swim instead of running: level in the water with the belly half a metre off the floor,
-// which is where a napping seal would trip them and a beam would catch them, so a leap and a dive are needed in exactly
+// which is where a giant clam would trip them and a beam would catch them, so a leap and a dive are needed in exactly
 // the places a jump and a slide are. The rules and the reach are everybody's; only the stroke is their own.
 // Everything the game asks of a Character, this answers too.
 const SWIM_Y = 1.0; // how high the middle of the body rides
@@ -1666,7 +1709,7 @@ class SeaCharacter {
         T.bp = clamp(0.15 + (st.vy || 0) * 0.075, -0.6, 0.85); T.fl = 0.75; T.tx = K ? (st.vy > 0 ? 0.35 : -0.25) : 0; T.ty = K ? 0 : Math.sin(t * 16) * 0.22;
         k = 16; break;
       case 'slide': // a dive: flat along the floor with everything tucked in
-        T.by = B.dive; T.bp = 0.02; T.br = B.diveRoll; T.fl = -0.8; // (the orca tips on its side to get its fin under) T.tx = K ? Math.sin(t * 15) * 0.16 : 0; T.ty = K ? 0 : Math.sin(t * 15) * 0.2;
+        T.by = B.dive; T.bp = 0.02; T.br = B.diveRoll; T.fl = -0.8; T.tx = K ? Math.sin(t * 15) * 0.16 : 0; T.ty = K ? 0 : Math.sin(t * 15) * 0.2; // (the orca tips on its side to get its fin under)
         k = 20; break;
       case 'fly': // coconuts lit: straight as an arrow
         T.bp = 0.16 + Math.sin(t * 3.1) * 0.04; T.fl = 0.45; T.tx = K ? Math.sin(t * 12) * 0.18 : 0; T.ty = K ? 0 : Math.sin(t * 12) * 0.2;
@@ -2178,7 +2221,7 @@ function genSegment(seg, W) {
     if (seg.first) line(7.6, 19, 1);
     const end = seg.len - HJ - Math.max(11, v * 0.8);
     const tGap = levelGap(L);
-    const hop = seg.sea ? 1.5 : 1; // under water the things to hop over are seals, so there are more of them
+    const hop = seg.sea ? 1.5 : 1; // under water there is more to hop over (giant clams) and a little less of everything else
     let last = '';
     while (s < end - 2) {
       const on = (min, w) => (prog >= min ? w : 0);
@@ -2233,16 +2276,22 @@ function addLogMesh(ob, ol, rng, xc, z, len) {
   for (let i = 0; i < bands; i++) ob.add(SHAPE.cyl12, M(xc + (i - (bands - 1) / 2) * len * 0.3 + rng.range(-0.15, 0.15), r, z, 2 * r + 0.03, 0.16, 2 * r + 0.03, 0, 0, rz), ENV.woodDark);
   ob.add(SHAPE.cone4, M(xc + rng.range(-0.3, 0.3) * len, 2 * r + 0.16, z, 0.4, 0.5, 0.1, 0, rng.f() * 3, 0.5), ENV.leaf[0]);
 }
-// Under water, what lies across the path is a row of napping seals: one to a lane, nose to tail.
-function addSeals(ob, ol, rng, xc, z, len) {
-  const G = seaGeo(), n = Math.max(1, Math.round(len / 1.84)), step = len / n, k = 0.92;
-  let face = rng.chance(0.5) ? 1 : -1;
+// Under water, what lies across the path is a row of giant clams, one to a lane, each gaping towards you with a pearl inside.
+const CLAM_SHELL = [0xf7c9dc, 0xd9c8f5, 0xfbe6c4, 0xbfe8dc], CLAM_FLESH = [0x2fc7c9, 0x7b6cf0, 0x3aa0ff, 0xf06ca8];
+function addClams(ob, ol, glow, rng, xc, z, len) {
+  const G = seaGeo(), n = Math.max(1, Math.round(len / 1.84)), step = len / n, HY = 0.27, HZ = -0.5, GAPE = 0.5;
+  let ci = rng.int(0, 3);
   for (let i = 0; i < n; i++) {
-    const x = xc + (i - (n - 1) / 2) * step - face * 0.135 * k; // the model's middle sits a little behind its origin
-    const yaw = (face * Math.PI) / 2 + rng.range(-0.09, 0.09), dz = rng.range(-0.07, 0.07);
-    ob.add(G.sealNap, M(x, 0, z + dz, k, k, k, 0, yaw, 0));
-    ol.add(G.sealNapInk, M(x, 0, z + dz, k, k, k, 0, yaw, 0));
-    if (rng.chance(0.7)) face = -face;
+    const x = xc + (i - (n - 1) / 2) * step, yaw = rng.range(-0.14, 0.14), dz = rng.range(-0.06, 0.06), k = rng.range(0.95, 1.02), c = Math.cos(yaw), sn = Math.sin(yaw);
+    const at = (lx, ly, lz) => [x + (lx * c + lz * sn) * k, ly * k, z + dz + (-lx * sn + lz * c) * k]; // a point of the clam, out in the stretch
+    const shell = CLAM_SHELL[ci++ % 4], flesh = rng.pick(CLAM_FLESH), [hx, hy, hz] = at(0, HY, HZ);
+    for (const [rx, rz] of [[0, Math.PI], [-GAPE, 0]]) { // the lower half lies dome down; the upper one is hinged open at the back
+      ob.add(G.clamValve, M(hx, hy, hz, k, k, k, rx, yaw, rz), shell);
+      ol.add(G.clamValveInk, M(hx, hy, hz, k, k, k, rx, yaw, rz));
+    }
+    let p = at(0, 0.39, 0.04); ob.add(SHAPE.sph, M(p[0], p[1], p[2], 1.44 * k, 0.34 * k, 0.86 * k, 0, yaw, 0), flesh);  // the soft part, bright between the lips
+    for (const lx of [-0.5, -0.17, 0.17, 0.5]) { p = at(lx, 0.48 + 0.05 * (1 - Math.abs(lx) * 2), 0.4 - Math.abs(lx) * 0.16); ob.add(SHAPE.sphLo, M(p[0], p[1], p[2], 0.11 * k, 0.07 * k, 0.11 * k), shade(flesh, 1.45)); }
+    p = at(0, 0.55, 0.26); glow.add(SHAPE.sph, M(p[0], p[1], p[2], 0.3 * k, 0.3 * k, 0.3 * k), 0xfffdf2);               // the pearl
   }
 }
 function addRubbleMesh(ob, ol, rng, x, z) {
@@ -2345,7 +2394,10 @@ function buildSegment(seg, W) {
   for (const o of seg.obstacles) {
     const a = ob.n, b = ol.n, c = glow.n, z = -o.s;
     if (o.type === 'pillar') addTotem(ob, ol, glow, laneX(o.lane), z);
-    else if (o.type === 'log') { (sea ? addSeals : addLogMesh)(ob, ol, rng, (laneX(o.l0) + laneX(o.l1)) / 2, z, (o.l1 - o.l0) * LANE_W + 1.72); if (sea) o.skin = 'seal'; }
+    else if (o.type === 'log') {
+      const xc = (laneX(o.l0) + laneX(o.l1)) / 2, len = (o.l1 - o.l0) * LANE_W + 1.72;
+      if (sea) { addClams(ob, ol, glow, rng, xc, z, len); o.skin = 'clam'; } else addLogMesh(ob, ol, rng, xc, z, len);
+    }
     else if (o.type === 'rubble') addRubbleMesh(ob, ol, rng, laneX(o.lane), z);
     else if (o.type === 'beam') addBeamMesh(ob, ol, glow, rng, z);
     o.rOb = [a, ob.n]; o.rOl = [b, ol.n]; o.rGl = [c, glow.n];
@@ -2859,7 +2911,7 @@ class FX {
 }
 
 // ───────────────────────── game: save data, camera, player, rules ─────────────────────────
-let renderer, scene, camera, world, sky, monkey, boulder, orca, fx;
+let renderer, scene, camera, world, sky, monkey, boulder, shark, fx;
 const _look = new THREE.Vector3(), _nose = new THREE.Vector3();
 const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* not available */ } };
 
@@ -3136,7 +3188,7 @@ const Game = {
     return { dist: 0, score: 0, nanas: 0, mult: 1, level: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
       magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1 } };
   },
-  closeGap() { return Tide.wet ? 3.2 : Cam.portrait ? 4.6 : 4.9; }, // the orca is lower than the boulder, so it comes in closer to be seen
+  closeGap() { return Tide.wet ? 3.2 : Cam.portrait ? 4.6 : 4.9; }, // the shark is lower than the boulder, so it comes in closer to be seen
 
   // ── screens ──
   toTitle() {
@@ -3164,7 +3216,7 @@ const Game = {
     this.camFrom = quick ? Object.assign(Cam.preset('run'), { a: 1.15, dist: 5.2, height: 2.4 }) : Object.assign({}, Cam.c);
     this.camTo = Cam.preset('run');
     Cam.snap(this.camFrom);
-    Sound.startMusic(); Sound.muffle(false); if (Tide.wet) Sound.sfx.orca(); else Sound.sfx.rumbleStart();
+    Sound.startMusic(); Sound.muffle(false); if (Tide.wet) Sound.sfx.shark(); else Sound.sfx.rumbleStart();
     for (const c of world.cur.critters || []) if (c.home) c.flee(this.time); // the seal by the door knows what is coming out of it
     UI.setState('intro'); UI.hud(this.run, true);
     if (!quick) fx.sparkle(Player.wx, 1.6, Player.wz, 8, 0xffe45c);
@@ -3183,7 +3235,7 @@ const Game = {
     MAP = MAPS[Save.data.map] ? Save.data.map : 'ruins';
     const sea = atSea();
     this.skyP = 0; this.seaK = sea ? 1 : 0; Tide.flood(sea); sky.setLook(0, Tide.sub, this.homeK); fx.clear();
-    orca.group.visible = false; Sound.sea(sea); UI.sea(sea);
+    shark.group.visible = false; Sound.sea(sea); UI.sea(sea);
   },
   pause() { if (this.state !== 'run' && this.state !== 'count') return; this.state = 'pause'; UI.setState('pause'); UI.stopCount(); Sound.sleep(); },
   resume() {
@@ -3213,8 +3265,8 @@ const Game = {
     run.danger = 5.5; run.slow = 0.45; run.invuln = 0.75; P.stumbleT = 0;
     monkey.setExpr('squint', 0.75); Sound.sfx.stumble(); Cam.kick(0.55); buzz(40);
     puff(P.wx, P.wz, 7);
-    if (Tide.wet) Sound.sfx.orca(); // somewhere behind, something has noticed
-    if (o && o.skin === 'seal') { Sound.sfx.seal(); fx.bubbles(P.wx, 0.7, P.wz, 8, 1.1); } // a rude awakening
+    if (Tide.wet) Sound.sfx.shark(); // somewhere behind, something has noticed
+    if (o && o.skin === 'clam') { Sound.sfx.clam(); fx.bubbles(P.wx, 0.7, P.wz, 8, 1.1); } // it snaps shut in a huff
     else if (o && o.type !== 'pillar') fx.debris(P.wx, 0.1, P.wz, 5, o.type === 'log' ? ENV.wood : 0x9aa3a8);
   },
   hitSolid(o) {
@@ -3390,7 +3442,7 @@ const Game = {
       if (t > 2.0) this.over();
       mode = d.landed ? 'bonk' : 'fall';
       Cam.lookAt = _look.set(P.wx, Math.max(P.y, WATER_Y) + 0.6, P.wz);
-    } else if (d.type === 'boop') { // the orca noses him clean off his feet
+    } else if (d.type === 'boop') { // the shark noses him clean off his feet
       const reach = 1.8;
       if (!d.squashed) {
         this.bGap = Math.max(reach, this.bGap - 19 * dt);
@@ -3403,7 +3455,7 @@ const Game = {
       } else {
         const u = clamp((t - d.tq) / 0.95, 0, 1);
         P.s = d.s1 + d.fly * easeOut(u); P.y = Math.sin(Math.PI * u) * 2.7; // up and over in a slow arc, then down on his back
-        this.bGap = damp(this.bGap + (P.s - (d.sp === undefined ? d.s1 : d.sp)), 3.1, 2.6, dt); d.sp = P.s; // the orca noses after him and hovers there, wriggling with glee
+        this.bGap = damp(this.bGap + (P.s - (d.sp === undefined ? d.s1 : d.sp)), 3.1, 2.6, dt); d.sp = P.s; // the shark noses after him and hovers there, wriggling with glee
         if (u >= 1 && !d.landed) { d.landed = true; P.y = 0; monkey.bounce(0.72); monkey.stars.visible = true; fx.dust(P.wx, 0, P.wz, 8); Sound.sfx.land(); }
         if (t > d.tq + 2.1) this.over();
       }
@@ -3442,14 +3494,14 @@ const Game = {
     b.x = damp(b.x, tx, 16, dt); b.z = damp(b.z, tz, 16, dt);
     this.bYaw = dampAngle(this.bYaw, seg.yaw, 8, dt);
     const moved = Math.hypot(b.x - ox, b.z - oz), shown = this.bGap < 13.5 && this.state !== 'title';
-    // On land a boulder rolls after him. Under water the orca takes over (if one is in sight at the time, they swap in a blink).
+    // On land a boulder rolls after him. Under water a shark takes over (if one is in sight at the time, they swap in a blink).
     const k = this.seaK = damp(this.seaK, Tide.wet ? 1 : 0, 10, dt);
     boulder.group.position.set(b.x, 0, b.z); boulder.group.rotation.y = this.bYaw;
     boulder.roll(moved);
     boulder.group.visible = shown && k < 0.97; boulder.group.scale.setScalar(Math.max(0.01, 1 - k));
-    orca.group.position.set(b.x, 0, b.z); orca.group.rotation.y = this.bYaw;
-    orca.group.visible = shown && k > 0.03; orca.group.scale.setScalar(Math.max(0.01, k));
-    if (orca.group.visible) orca.update(dt, this.time, dt > 0 ? moved / dt : 0, this.death && this.death.type === 'boop' && this.death.squashed ? 1 : 0);
+    shark.group.position.set(b.x, 0, b.z); shark.group.rotation.y = this.bYaw;
+    shark.group.visible = shown && k > 0.03; shark.group.scale.setScalar(Math.max(0.01, k));
+    if (shark.group.visible) shark.update(dt, this.time, dt > 0 ? moved / dt : 0, this.death && this.death.type === 'boop' && this.death.squashed ? 1 : 0);
     const near = clamp((13 - Math.abs(this.bGap)) / 9, 0, 1);
     Sound.rumble(this.state === 'over' || this.state === 'title' ? 0 : near * 0.55);
     if (near > 0.55 && (this.state === 'run' || this.state === 'intro')) Cam.kick(0.07 + (near - 0.55) * 0.2);
@@ -3573,7 +3625,7 @@ const UI = (() => {
     fall: ['Splash!', (n) => n + ' went for a swim.'],
     flat: ['Flattened!', (n) => 'The boulder caught up with ' + n + '.'],
     sink: ['Glub!', (n, c) => (c.swims ? 'The undertow pulled ' + n + ' down.' : n + ' sank to the sea bed.')],
-    boop: ['Booped!', (n, c) => (c.orca ? 'A much bigger orca' : 'The orca') + ' caught up with ' + n + '.'],
+    boop: ['Booped!', (n) => 'The shark caught up with ' + n + '.'],
   };
   let browseAt = 0;
   const cast = () => CHAR_ORDER.filter((k) => !CHARS[k].sea || atSea()); // who can be picked for the level that is chosen: the seal and the orca only show up in High Tide
@@ -3846,7 +3898,7 @@ function boot(hot) {
   Save.load(hot);
   Roster.use(Save.data.char);
   boulder = new Boulder(); scene.add(boulder.group);
-  orca = new Orca(); scene.add(orca.group);
+  shark = new Shark(); scene.add(shark.group);
   fx = new FX(scene);
 
   function resize() {
@@ -3895,7 +3947,7 @@ function boot(hot) {
   requestAnimationFrame(frame);
 
   // testing hooks
-  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get orca() { return orca; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); } };
+  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get shark() { return shark; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); } };
 }
 
 try {
@@ -3912,7 +3964,7 @@ try {
 <script>
 // Home-screen app extras: play offline, and pick up new versions by itself.
 (function () {
-  var BUILD = 1795495768;
+  var BUILD = 1795497331;
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
   function check() {
     var st = document.getElementById('stage').dataset.state;

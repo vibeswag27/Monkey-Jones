@@ -485,9 +485,21 @@ function fishGeo(cols) {
 }
 // Ink outline geometry that a GeoBuilder can also merge (it needs normals).
 function inkOf(geo, t) { const g = outlineOf(geo, t); g.setAttribute('normal', geo.attributes.normal); return g; }
+// One half of a giant clam shell, lying flat: hinge along the X axis at the origin, the lip a metre out towards +Z, dome side up.
+// Built white (with darker ribs), so each clam can be given its own colour.
+function clamValveGeo() {
+  const gb = new GeoBuilder();
+  gb.add(SHAPE.sphHi, M(0, 0.06, 0.5, 1.7, 0.36, 1.06), 0xffffff);
+  for (const d of [-0.62, -0.31, 0, 0.31, 0.62]) {
+    const sn = Math.sin(d), cs = Math.cos(d);
+    gb.add(SHAPE.sph, M(sn * 0.5, 0.09, cs * 0.5, 0.22, 0.34, 1.02, 0, d, 0), [0.84, 0.84, 0.84]);   // ribs fanning out from the hinge
+    gb.add(SHAPE.sph, M(sn * 0.99, 0.03, cs * 0.99, 0.34, 0.15, 0.2, 0, d, 0), 0xffffff);            // and a scallop at the end of each, for a wavy lip
+  }
+  return gb.build();
+}
 function seaGeo() { // built the first time the tide comes in
-  if (!GEO.sealNap) {
-    GEO.sealNap = sealGeo(true); GEO.sealNapInk = inkOf(GEO.sealNap, 0.03);
+  if (!GEO.seal) {
+    GEO.clamValve = clamValveGeo(); GEO.clamValveInk = inkOf(GEO.clamValve, 0.03);
     GEO.seal = sealGeo(false); GEO.sealInk = inkOf(GEO.seal, 0.03);
     GEO.orca = orcaGeo('all'); GEO.orcaInk = inkOf(GEO.orca, 0.04);
     GEO.fishA = fishGeo([0xff8a3c, 0xffb347, 0xff6f61]); GEO.fishB = fishGeo([0xffe066, 0x5fd4f2, 0x7ae0c4]);
@@ -496,26 +508,64 @@ function seaGeo() { // built the first time the tide comes in
 }
 const sharedMesh = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.userData.sharedGeo = true; return m; };
 
-// The orca that takes over from the boulder under water: it swims after you, and if it catches you, you get booped.
-class Orca {
+// The shark, nose towards -Z, about 4.4 m long. part: 'body', or 'tail' (the piece that sweeps from side to side, built round its hinge).
+const SHARK = { skin: 0x6b90ad, fin: 0x567892, belly: 0xf3f5ef, gum: 0x5a2233, tooth: 0xffffff, pupil: 0x15171d };
+function sharkGeo(part) {
+  const gb = new GeoBuilder(), c = SHARK;
+  if (part !== 'tail') {
+    gb.add(SHAPE.sphHi, M(0, 0, 0, 1.6, 1.34, 2.9), c.skin);                                                   // the bulk of it
+    gb.add(SHAPE.sphHi, M(0, 0.02, -0.95, 1.3, 1.02, 1.75), c.skin);                                           // the head, running out to a blunt point
+    gb.add(SHAPE.sphHi, M(0, -0.2, -0.3, 1.46, 1.02, 2.5), c.belly);                                           // white underneath
+    gb.add(SHAPE.sph, M(0, -0.16, -1.05, 1.12, 0.78, 1.4), c.belly);                                           // and a white chin
+    gb.add(taperTube([v3(0, 0.02, 0.9), v3(0, 0.05, 1.15), v3(0, 0.07, 1.4)], 6, 0.56, 0.34, 12), IDENT, c.skin);
+    gb.add(SHAPE.sph, M(0, 0.07, 1.4, 0.68, 0.68, 0.46), c.skin);
+    gb.add(SHAPE.cone4, M(0, 1.0, 0.2, 0.26, 1.1, 0.95, 0.45, 0, 0), c.fin);                                   // the fin: a triangle, where the orca's is a round paddle (thick enough to see from behind)
+    _v.set(0, -0.07, -1).normalize();                                                                          // a pointed snout that juts out over the mouth: from above, the shape that says shark
+    gb.add(SHAPE.coneS, Mdir(0, 0.12, -1.0, _v, 1.24, 1.22, 0.8), c.skin);
+    gb.add(SHAPE.coneS, Mdir(0, 0.04, -1.0, _v, 1.16, 1.14, 0.78), c.belly);                                   // white on the underside of it too
+    // a wide grin with a row of little teeth, and a slanted brow over each eye: more mischief than menace
+    const grin = new THREE.CatmullRomCurve3([v3(-0.6, -0.12, -1.05), v3(-0.5, -0.3, -1.25), v3(-0.26, -0.4, -1.5), v3(0, -0.42, -1.62), v3(0.26, -0.4, -1.5), v3(0.5, -0.3, -1.25), v3(0.6, -0.12, -1.05)]);
+    gb.add(softG(new THREE.TubeGeometry(grin, 24, 0.05, 6, false)), IDENT, c.gum);
+    for (const u of [0.2, 0.31, 0.42, 0.5, 0.58, 0.69, 0.8]) { const p = grin.getPoint(u); gb.add(SHAPE.cone4, M(p.x * 1.02, p.y - 0.085, p.z * 1.02, 0.1, 0.13, 0.07, Math.PI, Math.atan2(p.x, -p.z), 0), c.tooth); }
+    for (const sx of [-1, 1]) {
+      gb.add(SHAPE.sph, M(sx * 0.52, 0.2, -1.3, 0.22, 0.24, 0.22), c.belly);                                   // eye
+      gb.add(SHAPE.sph, M(sx * 0.58, 0.19, -1.37, 0.12, 0.13, 0.12), c.pupil);
+      gb.add(SHAPE.sph, M(sx * 0.49, 0.335, -1.3, 0.34, 0.11, 0.2, 0, sx * -0.55, sx * 0.42), c.fin);          // a heavy brow, low on the inside
+      for (let i = 0; i < 3; i++) gb.add(SHAPE.box, M(sx * (0.752 + i * 0.012), 0.0, -0.62 + i * 0.15, 0.03, 0.44, 0.04, 0.12, 0, sx * 0.12), c.fin); // gill slits
+      _v.set(sx * 0.78, -0.42, 0.46).normalize();
+      gb.add(SHAPE.cone4, Mdir(sx * 0.6, -0.26, -0.4, _v, 0.12, 1.05, 0.62), c.fin);                           // pectoral fins, swept back
+    }
+  }
+  if (part !== 'body') {
+    const z0 = part === 'tail' ? -1.4 : 0;
+    gb.add(taperTube([v3(0, 0.07, 1.4 + z0), v3(0, 0.1, 1.75 + z0), v3(0, 0.12, 2.05 + z0)], 6, 0.34, 0.14, 10), IDENT, c.skin);
+    _v.set(0, 0.8, 0.6).normalize(); gb.add(SHAPE.cone4, Mdir(0, 0.1, 1.98 + z0, _v, 0.12, 1.15, 0.56), c.fin);   // tail fin: tall upper lobe …
+    _v.set(0, -0.74, 0.67).normalize(); gb.add(SHAPE.cone4, Mdir(0, 0.12, 1.98 + z0, _v, 0.11, 0.72, 0.46), c.fin); // … and a shorter lower one
+  }
+  return gb.build();
+}
+
+// What comes after you in High Tide instead of the boulder: a shark. If it catches you, you get booped.
+class Shark {
   constructor() {
     this.group = new THREE.Group(); this.group.visible = false;
-    const swim = this.swim = new THREE.Group(); swim.position.set(0, 1.0, 0.3); this.group.add(swim);
-    const body = orcaGeo('body'), tail = orcaGeo('tail');
-    const b = new THREE.Mesh(body, MAT.char); b.add(new THREE.Mesh(outlineOf(body, 0.04), MAT.inkDark)); swim.add(b);
-    this.tail = new THREE.Group(); this.tail.position.set(0, 0, 1.3); swim.add(this.tail);
-    const tm = new THREE.Mesh(tail, MAT.char); tm.add(new THREE.Mesh(outlineOf(tail, 0.04), MAT.inkDark)); this.tail.add(tm);
+    const swim = this.swim = new THREE.Group(); swim.position.set(0, 1.0, 0.7); this.group.add(swim); // set back, so the tip of its nose is where the catching happens
+    const body = sharkGeo('body'), tail = sharkGeo('tail');
+    const b = new THREE.Mesh(body, MAT.char); b.add(new THREE.Mesh(outlineOf(body, 0.04), MAT.ink)); swim.add(b);
+    this.tail = new THREE.Group(); this.tail.position.set(0, 0, 1.4); swim.add(this.tail);
+    const tm = new THREE.Mesh(tail, MAT.char); tm.add(new THREE.Mesh(outlineOf(tail, 0.04), MAT.ink)); this.tail.add(tm);
     this.shadow = sharedMesh(GEO.disc, MAT.shadow);
-    this.shadow.scale.set(2.4, 1, 4.2); this.shadow.position.set(0, 0.03, 0.3); this.shadow.renderOrder = 2;
+    this.shadow.scale.set(2.3, 1, 4.5); this.shadow.position.set(0, 0.03, 0.75); this.shadow.renderOrder = 2;
     this.group.add(this.shadow);
-    this.ph = 0; this.wig = 0;
+    this.ph = 0;
   }
   // v: how fast it is moving (m/s). glee: 0…1 after a boop, when it wriggles with delight.
   update(dt, t, v, glee) {
     this.ph += dt * (4.2 + Math.min(v, 30) * 0.22);
     const s = Math.sin(this.ph), g = glee || 0;
-    this.tail.rotation.x = s * 0.42;
-    this.swim.rotation.x = Math.sin(this.ph - 1.1) * 0.07 - g * 0.25;
+    this.tail.rotation.y = s * 0.46;                                        // a shark's tail goes from side to side
+    this.swim.rotation.y = Math.sin(this.ph - 1.1) * 0.08;                  // and the rest of it snakes a little the other way
+    this.swim.rotation.x = -g * 0.25;
     this.swim.rotation.z = Math.sin(t * 1.3) * 0.05 + g * Math.sin(t * 13) * 0.22;
     this.swim.position.y = 1.0 + Math.sin(t * 1.9) * 0.1 + g * 0.5;
   }
@@ -549,7 +599,7 @@ class Swimmer {
 
 // ───────────────────────── the seal and the orca as runners ─────────────────────────
 // Sea-only characters. They swim instead of running: level in the water with the belly half a metre off the floor,
-// which is where a napping seal would trip them and a beam would catch them, so a leap and a dive are needed in exactly
+// which is where a giant clam would trip them and a beam would catch them, so a leap and a dive are needed in exactly
 // the places a jump and a slide are. The rules and the reach are everybody's; only the stroke is their own.
 // Everything the game asks of a Character, this answers too.
 const SWIM_Y = 1.0; // how high the middle of the body rides
@@ -744,7 +794,7 @@ class SeaCharacter {
         T.bp = clamp(0.15 + (st.vy || 0) * 0.075, -0.6, 0.85); T.fl = 0.75; T.tx = K ? (st.vy > 0 ? 0.35 : -0.25) : 0; T.ty = K ? 0 : Math.sin(t * 16) * 0.22;
         k = 16; break;
       case 'slide': // a dive: flat along the floor with everything tucked in
-        T.by = B.dive; T.bp = 0.02; T.br = B.diveRoll; T.fl = -0.8; // (the orca tips on its side to get its fin under) T.tx = K ? Math.sin(t * 15) * 0.16 : 0; T.ty = K ? 0 : Math.sin(t * 15) * 0.2;
+        T.by = B.dive; T.bp = 0.02; T.br = B.diveRoll; T.fl = -0.8; T.tx = K ? Math.sin(t * 15) * 0.16 : 0; T.ty = K ? 0 : Math.sin(t * 15) * 0.2; // (the orca tips on its side to get its fin under)
         k = 20; break;
       case 'fly': // coconuts lit: straight as an arrow
         T.bp = 0.16 + Math.sin(t * 3.1) * 0.04; T.fl = 0.45; T.tx = K ? Math.sin(t * 12) * 0.18 : 0; T.ty = K ? 0 : Math.sin(t * 12) * 0.2;

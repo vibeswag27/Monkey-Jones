@@ -1,4 +1,4 @@
-// A walk through the High Tide level with a camera: the home screen, the orca coming out of the temple, the reef, seals,
+// A walk through the High Tide level with a camera: the home screen, the shark coming out of the temple, the reef, clams,
 // the chase, both watery endings and a night level. Contact sheets go to shots/.
 //   node test/sea.js [w] [h] [tag] [character id]
 const { open, step, until } = require('./lib2');
@@ -8,7 +8,7 @@ const W = +(process.argv[2] || 390), H = +(process.argv[3] || 760), TAG = proces
   const { browser, page, errors } = await open({ w: W, h: H, dpr: 2 });
   const ev = (src) => page.evaluate((src) => new Function('m', src)(window.__mj), src);
   const shots = [];
-  const KEEP = /home|reef 1|seals ahead|orca on|boop \+0.7|night/;
+  const KEEP = /home|intro|reef 1|clams ahead|shark on|boop|night/;
   const snap = async (label) => { await new Promise((r) => setTimeout(r, 120)); await page.evaluate(() => window.__mj.render()); const buf = await page.screenshot({ type: 'png' }); shots.push({ label, buf }); if (KEEP.test(label)) require('fs').writeFileSync(`shots/${TAG}-${label.replace(/[^a-z0-9]+/gi, '_')}.png`, buf); };
   const home = (depth) => ev(`m.Save.data.runs = 5; m.Save.data.map = 'tide'; m.Save.data.char = '${WHO}'; m.Seg.startDepth = ${depth}; m.Game.toTitle();`);
   const begin = async (depth) => { await home(depth); await ev('m.Game.startIntro(false)'); await until(page, 'm.Game.state === "run"', 5, false); };
@@ -20,14 +20,14 @@ const W = +(process.argv[2] || 390), H = +(process.argv[3] || 760), TAG = proces
   await until(page, 'm.Game.state === "run"', 5, false); await step(page, 0.5, true); await snap('level 1 banner');
   await step(page, 2.0, true); await snap('reef 1');
   await step(page, 2.4, true); await snap('reef 2');
-  // 2. seals
-  const seal = await page.evaluate(() => { const m = window.__mj, G = m.Game, P = m.Player; let t = 0; const ahead = () => P.seg.obstacles.find((o) => o.skin === 'seal' && !o.gone && o.s - P.s > 4 && o.s - P.s < 9); while (G.state === 'run' && !ahead() && t < 40) { m.Bot.think(); G.update(1 / 60); t += 1 / 60; } m.render(); return !!ahead(); });
-  await snap(seal ? 'seals ahead' : 'no seals found');
+  // 2. clams
+  const clam = await page.evaluate(() => { const m = window.__mj, G = m.Game, P = m.Player; let t = 0; const ahead = () => P.seg.obstacles.find((o) => o.skin === 'clam' && !o.gone && o.s - P.s > 4 && o.s - P.s < 9); while (G.state === 'run' && !ahead() && t < 40) { m.Bot.think(); G.update(1 / 60); t += 1 / 60; } m.render(); return !!ahead(); });
+  await snap(clam ? 'clams ahead' : 'no clams found');
   await step(page, 0.28, true); await snap('hopping them');
-  // 3. the orca
+  // 3. the shark
   await until(page, 'm.Player.grounded && m.Game.run.danger <= 0', 8, true);
-  await ev('m.Game.run.invuln = 0; m.Game.stumble({ type: "log", skin: "seal" })'); await step(page, 0.6, true); await snap('orca on his tail');
-  await ev('m.Game.run.invuln = 0; m.Game.stumble({ type: "log", skin: "seal" })');
+  await ev('m.Game.run.invuln = 0; m.Game.stumble({ type: "log", skin: "clam" })'); await step(page, 0.6, true); await snap('shark on his tail');
+  await ev('m.Game.run.invuln = 0; m.Game.stumble({ type: "log", skin: "clam" })');
   for (const t of [0.25, 0.45, 0.7]) { await step(page, t, false); await snap('boop +' + t); }
   await until(page, 'm.Game.state === "over"', 8, false); await new Promise((r) => setTimeout(r, 500)); await snap('booped card');
   // 4. sinking: find an opening stretch with a gap right across it and a clear run-up, then run straight in
