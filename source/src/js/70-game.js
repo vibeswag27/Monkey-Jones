@@ -330,6 +330,8 @@ const HINTS = [
   { from: 100, to: 127, text: ['Swipe left or right to turn', 'Press ← or → to turn'], icon: 'both' },
 ];
 
+const GOLD_HINT = { text: ['Double tap for the Golden Banana', 'Press G for the Golden Banana'], icon: 'gold' }; // shown as a run begins, until one has ever been used
+
 const Game = {
   state: 'title', time: 0, run: null, death: null, introT: 0, introLen: 1.75, quick: false,
   goldSaves: 0, // how often the last line of defence had to stop gold from killing him: always 0 if every cause is handled where it arises (the tests insist)
@@ -337,7 +339,7 @@ const Game = {
 
   blankRun() {
     return { dist: 0, score: 0, nanas: 0, mult: 1, level: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
-      magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, gold: 0, goldOver: 0, coast: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1, gold: 1 } };
+      magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, gold: 0, goldOver: 0, coast: 0, t: 0, trail: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1, gold: 1 } };
   },
   closeGap() { return Tide.wet ? 3.2 : Cam.portrait ? 4.6 : 4.9; }, // the shark is lower than the boulder, so it comes in closer to be seen
 
@@ -362,7 +364,7 @@ const Game = {
     this.run.level = world.cur.level; this.run.mult = Math.min(10, this.run.level);
     this.skyP = this.run.level - 1;
     this.state = 'intro'; this.quick = !!quick; this.introT = 0; this.introLen = quick ? 1.0 : 1.8; this.scared = false; this.hintOn = -1;
-    monkey.holdBanana(false); monkey.setExpr('normal');
+    monkey.holdBanana(false); monkey.setExpr('normal'); monkey.setGold(false);
     boulder.group.visible = true; this.bS0 = quick ? -15 : -31; this.bGap = Player.s - this.bS0; this.bSnap = true; this.camF = 0; this.bY = 0;
     this.camFrom = quick ? Object.assign(Cam.preset('run'), { a: 1.15, dist: 5.2, height: 2.4 }) : Object.assign({}, Cam.c);
     this.camTo = Cam.preset('run');
@@ -406,7 +408,10 @@ const Game = {
     run.gold = run.max.gold = powerTime('gold'); run.goldOver = 0;
     run.danger = 0; run.slow = 0; run.invuln = 0; P.stumbleT = -1; // whatever trouble he was in, he is out of it
     world.setHold(true);                                           // the run gets no deeper while he is gold
-    UI.gold();
+    monkey.setGold(true); monkey.setExpr('happy', 1.2); monkey.bounce(1.35);
+    Sound.sfx.goldOn(); Cam.kick(0.6); buzz(60);
+    this.carry(); fx.sparkle(P.wx, P.y + 0.9, P.wz, 26, 0xffe45c); fx.sparkle(P.wx, P.y + 0.9, P.wz, 10, 0xffffff); // a burst of stars, which leaps ahead as he takes off
+    UI.gold(); UI.toast('Golden Banana!');
     return true;
   },
 
@@ -452,7 +457,7 @@ const Game = {
     const run = this.run, P = Player, seg = P.seg, ox = burst ? clamp((o.x0 + o.x1) / 2, -LANE_W, LANE_W) : clamp(P.x, o.x0, o.x1);
     world.smash(seg, o);
     if (!burst) { run.smashed = (run.smashed || 0) + 1; run.score += SMASH_SCORE * run.mult * (run.dbl > 0 ? 2 : 1); }
-    fx.debris(seg.wx(o.s, ox), P.floor + 0.5, seg.wz(o.s, ox), burst ? 6 : 9, o.type === 'log' || o.skin === 'mask' ? ENV.wood : o.skin === 'crab' ? 0xff6a4a : o.skin === 'jelly' ? 0xff8fc7 : 0x9fb0b8);
+    fx.shards(seg.wx(o.s, ox), P.floor + 0.3, seg.wz(o.s, ox), burst ? 6 : 9, o.type === 'log' || o.skin === 'mask' ? ENV.wood : o.skin === 'crab' ? 0xff6a4a : o.skin === 'jelly' ? 0xff8fc7 : 0x9fb0b8, seg.dir.fx * 10, seg.dir.fz * 10);
     fx.sparkle(seg.wx(o.s, ox), P.floor + 1, seg.wz(o.s, ox), 5, 0xffe45c);
     if (!burst && this.time - (this.smashAt || 0) > 0.09) { this.smashAt = this.time; Sound.sfx.smash(); Cam.kick(0.3); buzz(12); }
   },
@@ -467,6 +472,8 @@ const Game = {
     for (const o of seg.obstacles) { if (o.gone || o.type === 'pad' || o.s1 < P.s - 2) continue; if (o.s1 > reach) break; this.goldSmash(o, true); hit++; }
     run.ghost = Math.max(run.ghost, GOLD_GRACE); run.coast = 1;
     world.setHold(false); world.dropGold();
+    monkey.setGold(false); Sound.sfx.goldOff();
+    fx.sparkle(P.wx, P.y + 0.9, P.wz, 18, 0xffe45c);
     if (hit) { Sound.sfx.smash(); Cam.kick(0.6); buzz(30); }
   },
   hitSolid(o) {
@@ -490,8 +497,11 @@ const Game = {
     const d = Save.data, P = Player;
     p.got = true; if (p.mesh) p.mesh.visible = false;
     if (d.gold < GOLD_MAX) { d.gold++; Save.store(); }
-    UI.gold(); UI.toast('Golden banana!'); Sound.sfx.power(); monkey.setExpr('happy', 0.9); buzz(30);
-    fx.debris(P.wx, P.y + 1, P.wz, 12, this.run && P.seg.sea ? 0x7a5238 : 0xcf9150); fx.sparkle(P.wx, P.y + 1.1, P.wz, 16, 0xffe45c);
+    UI.gold(); UI.toast('Golden banana!'); Sound.sfx.crate(); monkey.setExpr('happy', 0.9); buzz(30);
+    const dir = P.seg.dir, v = this.run.speed, was = [fx.cx, fx.cz]; // its splinters and its sparkle fly on with him, whatever his speed, rather than hang where the camera is about to be
+    fx.carry(dir.fx * v, dir.fz * v);
+    fx.shards(P.wx, P.y + 0.6, P.wz, 12, P.seg.sea ? 0x7a5238 : 0xcf9150, dir.fx * 8, dir.fz * 8); fx.sparkle(P.wx, P.y + 1.1, P.wz, 16, 0xffe45c);
+    fx.carry(was[0], was[1]);
   },
   take(p) {
     if (p.kind === 'crate') { this.takeCrate(p); return; }
@@ -547,7 +557,19 @@ const Game = {
     run.speed = damp(run.speed, golden ? Math.min(GOLD_K * vL, GOLD_VMAX) : vL * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), golden ? 6 : run.coast > 0 ? 2.5 : 5, dt);
     P.update(dt);
     if (P.dead) return;
-    if (golden) world.goldAhead(P.s); // bananas in all three lanes, as far as he can see
+    run.t += dt;
+    if (golden) {
+      world.goldAhead(P.s); // bananas in all three lanes, as far as he can see
+      const d = P.seg.dir, vs = Math.min(GOLD_K * vL, GOLD_VMAX) - 9, step = Math.min(dt, 0.1); // he trails gold: about 36 stars a second whatever the frame rate, each falling behind at 9 m/s (vs: its speed over the ground)
+      for (run.trail += step * 36; run.trail >= 1; run.trail--) {
+        const back = ((run.speed - vs) * Math.random() + vs) * step; // somewhere he was during this frame, less the step the star is about to take: at full speed it is never born ahead of him
+        fx.trail(P.wx - d.fx * back, P.y + 0.1 + Math.random() * 1.0, P.wz - d.fz * back, -d.fx * 9, -d.fz * 9, Math.random() < 0.3 ? 0xffffff : 0xffe45c);
+      }
+      if (run.gold > 0 && run.gold < 1.5) { // its last moments: the gold flickers (under three times a second, and not at all for a player who has asked for less motion), and a tick counts them down
+        monkey.setGold(REDUCED || Math.floor(run.gold * 6) % 2 === 0);
+        const beat = Math.floor(run.gold * 4); if (beat !== this.goldBeat) { this.goldBeat = beat; Sound.sfx.goldTick(); }
+      } else monkey.setGold(true);
+    }
     if (run.gold > 0) { run.gold -= dt; if (run.gold <= 0) { run.gold = 0; run.goldOver = 1e-6; } }
     if (run.goldOver > 0) { // time is up. But not in the run-up to a corner: there it is held on until he is round (a second or so; the tests hold it under GOLD_OVER)
       run.goldOver += dt;
@@ -576,14 +598,17 @@ const Game = {
       let h = -1;
       for (let i = 0; i < HINTS.length; i++) if (P.s >= HINTS[i].from && P.s <= HINTS[i].to) h = i;
       if (h !== this.hintOn) { this.hintOn = h; UI.hint(h < 0 ? null : HINTS[h]); }
-    } else if (this.hintOn >= 0) { this.hintOn = -1; UI.hint(null); }
+    } else { // after the coaching runs: how to set off a Golden Banana, as each run begins, until one has ever been used
+      const h = Save.data.runs >= 2 && !Save.data.goldUsed && Save.data.gold > 0 && run.t < 6 ? 99 : -1;
+      if (h !== this.hintOn) { this.hintOn = h; UI.hint(h < 0 ? null : GOLD_HINT); }
+    }
 
     if (P.grounded && P.slide <= 0 && !P.flying) { // soft plush footsteps, or the swish of each stroke
       const ph = Math.floor(monkey.phase / Math.PI);
       if (ph !== P.stepPh) { P.stepPh = ph; if (monkey.swims) Sound.sfx.swish(ph & 1); else Sound.sfx.step(ph & 1); }
     }
     Sound.tempo(114 + (run.speed - SPEED_MIN) * 1.3);
-    Cam.fovKick = REDUCED ? 0 : (run.speed - SPEED_MIN) * 0.42 + (P.flying ? 4 : 0);
+    Cam.fovKick = REDUCED ? 0 : golden ? Math.min(14, (run.speed - SPEED_MIN) * 0.42) : (run.speed - SPEED_MIN) * 0.42 + (P.flying ? 4 : 0); // (at gold's speed the view opens up, but only so far)
     Sound.jet(P.flying ? 0.5 : 0);
     if (P.flying) { // exhaust
       const d = P.seg.dir, back = run.speed - 7; // flames trail a little way behind him, not all the way to the camera
@@ -751,7 +776,7 @@ const Game = {
 
     let mode = 'run';
     if (st === 'intro') { this.updateIntro(dt); mode = this.introT < (this.quick ? 0 : 0.62) ? 'scare' : 'run'; }
-    else if (st === 'run') this.updateRun(dt);
+    else if (st === 'run') { this.carry(); this.updateRun(dt); }
     if (this.state === 'dying') mode = this.updateDying(dt);
     else if (this.state === 'over') mode = this.death.type === 'fall' ? 'fall' : this.death.type === 'flat' ? 'flat' : 'bonk';
     if ((this.state === 'run' || this.state === 'intro') && mode === 'run') mode = P.flying ? 'fly' : P.grounded || P.coyote > 0 ? (P.slide > 0 ? 'slide' : 'run') : 'air';
@@ -768,6 +793,7 @@ const Game = {
     });
 
     this.placeBoulder(dt);
+    fx.carry(0, 0); // (what the world throws off, a crate's twinkle or a bubble in the water, stays where it is)
     world.update(dt, this.time, P.wx, P.y, P.wz);
     fx.update(dt, this.pScale());
     const camF = this.camF = damp(this.camF, this.state === 'run' || this.state === 'intro' ? Math.min(fy, Math.max(0, P.y)) : 0, 5, dt); // the camera rides up with the floor he is on
@@ -776,6 +802,14 @@ const Game = {
     this.updateSea(dt);
     sky.update(dt, this.time, camera, Tide.y);
     UI.hud(run, false);
+    this.carry(); // (for whatever a tap sets off before the next frame: the dust of a jump)
+  },
+  // At gold's speed what he throws off (dust, sparkle, the pieces of what he smashes) travels with him: left where it was, the camera would run straight into it.
+  // (They are carried at the speed gold is heading for, not the speed he has reached: as he takes off they leap ahead of him, and nothing falls behind. For the second in which he sheds that speed afterwards, at his own.)
+  carry() {
+    const run = this.run, d = Player.seg.dir;
+    const v = this.state !== 'run' ? 0 : this.golden() ? Math.min(GOLD_K * levelSpeed(run.level), GOLD_VMAX) : run.coast > 0 ? run.speed : 0;
+    fx.carry(d.fx * v, d.fz * v);
   },
   // The tide, the time of day, and everything that changes when the water closes overhead.
   updateSea(dt) {

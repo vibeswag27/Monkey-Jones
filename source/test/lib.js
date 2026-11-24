@@ -12,10 +12,10 @@ const FONTS = {
   'fredoka-600.woff2': 'node_modules/@fontsource/fredoka/files/fredoka-latin-600-normal.woff2',
   'fredoka-700.woff2': 'node_modules/@fontsource/fredoka/files/fredoka-latin-700-normal.woff2',
 };
-async function open({ w = 390, h = 760, manual = true, dpr = 2, touch = true } = {}) {
+async function open({ w = 390, h = 760, manual = true, dpr = 2, touch = true, reduced = false } = {}) { // reduced: as a player who has asked their device for less motion
   const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true,
     args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr, hasTouch: touch, isMobile: touch });
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr, hasTouch: touch, isMobile: touch, reducedMotion: reduced ? 'reduce' : 'no-preference' });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 5).join('\n')));

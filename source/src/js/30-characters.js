@@ -106,6 +106,13 @@ const TAILS = {
   },
 };
 
+// Solid gold, or himself again: every mesh of a character that wears MAT.char wears MAT.midas instead while the Golden Banana lasts.
+function gild(who, on) {
+  on = !!on;
+  if (who.gilt === on) return;
+  who.gilt = on;
+  who.root.traverse((o) => { if (o.isMesh && (o.material === MAT.char || o.material === MAT.midas)) o.material = on ? MAT.midas : MAT.char; });
+}
 class Character {
   constructor(id) {
     const spec = this.spec = CHARS[id], p = spec.pal;
@@ -267,9 +274,10 @@ class Character {
   bounce(v) { this.sqy = v; this.sqv = 0; }
   snapPose() { for (const k in this.T) this.P[k] = this.T[k]; }
   // back to a clean slate (new run, or swapped in from the character screen)
+  setGold(on) { gild(this, on); }
   fresh() {
     this.root.visible = true; this.flat = 0; this.stars.visible = false; this.bubble.visible = false;
-    this.setJet(false); this.setSprings(false); this.setExpr('normal'); this.sqy = 1; this.sqv = 0;
+    this.setJet(false); this.setSprings(false); this.setGold(false); this.setExpr('normal'); this.sqy = 1; this.sqv = 0;
   }
 
   // st: { mode, t, time, speedK, vy, panic, lean, stumble }
@@ -762,9 +770,10 @@ class SeaCharacter {
   setSprings(on) { for (const c of this.coils) c.visible = on; }
   bounce(v) { this.sqy = v; this.sqv = 0; }
   snapPose() { for (const k in this.T) this.P[k] = this.T[k]; }
+  setGold(on) { gild(this, on); }
   fresh() {
     this.root.visible = true; this.flat = 0; this.stars.visible = false; this.bubble.visible = false;
-    this.setJet(false); this.setSprings(false); this.setExpr('normal'); this.sqy = 1; this.sqv = 0;
+    this.setJet(false); this.setSprings(false); this.setGold(false); this.setExpr('normal'); this.sqy = 1; this.sqv = 0;
     this.P.br = 0; this.P.bp = 0; this.P.by = 0; // the right way up again
   }
 

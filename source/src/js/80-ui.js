@@ -7,11 +7,11 @@ const UI = (() => {
     'overTitle', 'overSub', 'newBest', 'oScore', 'oDist', 'oLevel', 'oNanas', 'oBest', 'btnRun', 'btnPause', 'btnResume', 'btnRestart', 'btnHome', 'btnHome2', 'btnAgain',
     'btnMusic', 'btnSfx', 'btnMusic2', 'btnSfx2', 'fatalMsg', 'btnShop', 'btnShop2', 'btnShopDone', 'shopList', 'shopWallet',
     'btnChars', 'btnPrev', 'btnNext', 'btnCharGo', 'btnCharDone', 'charName', 'charBlurb', 'charDots', 'charWallet', 'charNeed', 'mapRuins', 'mapTide',
-    'btnGold', 'goldCount', 'goldHome', 'goldHomeChip']) el[id] = $(id);
+    'btnGold', 'goldCount', 'goldHome', 'goldHomeChip', 'goldGlow']) el[id] = $(id);
   const GOLDNANA = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFB400" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/><path d="M23.5 2.6l1.4 3.5 3.5 1.4-3.5 1.4-1.4 3.5-1.4-3.5-3.5-1.4 3.5-1.4z" fill="#fff" stroke="#3A1E14" stroke-width="1.7" stroke-linejoin="round"/></svg>';
   const NANA = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFD23F" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/></svg>';
   const touch = !!((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window);
-  const last = { score: -1, nanas: -1, mult: -1, level: -1, danger: false, sea: false, popAt: 0 };
+  const last = { score: -1, nanas: -1, mult: -1, level: -1, danger: false, sea: false, popAt: 0, gold: false };
   const replay = (node) => { node.classList.remove('on'); void node.offsetWidth; node.classList.add('on'); }; // restart a CSS animation
   const setText = (node, txt) => { node.textContent = txt; if (node.dataset.t !== undefined) node.dataset.t = txt; };
 
@@ -25,7 +25,7 @@ const UI = (() => {
     springs: ['Springs', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20.5l10-2.6L7 15.3l10-2.6L7 10.1l10-2.6L7 4.9" fill="none" stroke="#3A1E14" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 20.5l10-2.6L7 15.3l10-2.6L7 10.1l10-2.6L7 4.9" fill="none" stroke="#6FD93A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
     rocket: ['Rocket', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.5c-2.2 1.6-2.2 4 0 5.6 2.2-1.6 2.2-4 0-5.6z" fill="#FF8A1F" stroke="#3A1E14" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.6 12.5l-3.2 4.3 3.9-.9zM15.4 12.5l3.2 4.3-3.9-.9z" fill="#E8402A" stroke="#3A1E14" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 1.8c4 3.6 5 9.4 3.4 14.6H8.6C7 11.2 8 5.4 12 1.8z" fill="#FFF2DC" stroke="#3A1E14" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="8.8" r="2" fill="#5FD6F2" stroke="#3A1E14" stroke-width="1.4"/></svg>'],
   };
-  PW.gold = ['Gold', GOLDNANA];
+  PW.gold = ['Gold', GOLDNANA]; ICON.gold = GOLDNANA;
   const pw = {};
   for (const kind in PW) {
     const d = document.createElement('div');
@@ -85,7 +85,9 @@ const UI = (() => {
       const mx = run.max;
       setPower('magnet', run.magnet / mx.magnet); setPower('double', run.dbl / mx.double); setPower('shield', run.shield ? run.shieldT / mx.shield : 0);
       setPower('springs', run.springs / mx.springs); setPower('rocket', Player.flying ? Math.max(0.03, run.rocket / mx.rocket) : 0);
-      setPower('gold', run.gold > 0 || run.goldOver > 0 ? Math.max(0.03, run.gold / mx.gold) : 0);
+      const golden = run.gold > 0 || run.goldOver > 0;
+      setPower('gold', golden ? Math.max(0.03, run.gold / mx.gold) : 0);
+      if (golden !== last.gold) { last.gold = golden; el.goldGlow.classList.toggle('on', golden); el.btnGold.classList.toggle('on', golden); } // the screen's edge glows, and the button waits its turn
     },
     popBananas() {
       const now = performance.now();

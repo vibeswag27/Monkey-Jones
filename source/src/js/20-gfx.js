@@ -150,6 +150,7 @@ const MAT = {
   char: new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: GRAD_CHAR }),
   env: new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: GRAD_ENV }),
   gold: new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: GRAD_CHAR, emissive: 0x5a3c00 }),
+  midas: new THREE.MeshToonMaterial({ color: 0xffc21f, gradientMap: GRAD_CHAR, emissive: 0x4d3000 }), // what a character wears in place of `char` while the Golden Banana has him: solid gold
   ink: new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide }),
   glow: new THREE.MeshBasicMaterial({ vertexColors: true }),
   eye: new THREE.MeshBasicMaterial({ color: 0x1f0f09 }),

@@ -150,7 +150,7 @@ function boot(hot) {
   requestAnimationFrame(frame);
 
   // testing hooks
-  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get shark() { return shark; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); },
+  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get fx() { return fx; }, get shark() { return shark; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); },
     // lay out (but do not build) a stretch at a given depth of the run, for the generator's tests
     gen(depth, seed, hold) { const p = new Seg(null, null); p.len = 60; p.depth = depth - 1; const s = new Seg(p, 'R'); genSegment(s, { rng: makeRng(seed >>> 0), tutorial: false, nextPickupAt: 0, hold: !!hold }); return s; },
     // float a crate on a built stretch (for photographs and for trying things by hand)

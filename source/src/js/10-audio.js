@@ -118,6 +118,10 @@ const Sound = (() => {
       const f = semi(659.25, steps[Math.min(n, steps.length - 1)]);
       tone('triangle', f, f, 0.15, 0.3); tone('sine', f * 2, f * 2, 0.24, 0.2, 0.04);
     },
+    goldOn() { [0, 4, 7, 12, 16, 19, 24].forEach((st, i) => { const f = semi(523.25, st); tone('triangle', f, f, 0.22, 0.3, i * 0.045); tone('sine', f * 2, f * 2, 0.3, 0.12, i * 0.045 + 0.02); }); tone('sawtooth', 110, 880, 0.45, 0.16); hiss(0.5, 0.2, 'highpass', 2500, 9000, 0.7); }, // the Golden Banana takes hold
+    goldOff() { [12, 7, 4, 0].forEach((st, i) => { const f = semi(392, st); tone('triangle', f, f, 0.2, 0.26, i * 0.07); }); tone('sine', 660, 165, 0.5, 0.2); }, // and lets go
+    goldTick() { tone('square', 1320, 1320, 0.04, 0.13); tone('sine', 1760, 1760, 0.06, 0.1, 0.01); },                                                          // its last moments, counted
+    crate() { hiss(0.09, 0.4, 'bandpass', 900, 300, 1.2); tone('square', 180, 90, 0.08, 0.3); [7, 12, 16, 19, 24].forEach((st, i) => { const f = semi(523.25, st); tone('triangle', f, f, 0.18, 0.28, 0.06 + i * 0.05); }); }, // a crate bursts, and what was in it rings
     power() { [0, 4, 7, 12, 16].forEach((s, i) => { const f = semi(523.25, s); tone('triangle', f, f, 0.2, 0.3, i * 0.065); }); },
     powerEnd() { tone('triangle', 660, 330, 0.25, 0.22); },
     stumble() { tone('sawtooth', 260, 85, 0.24, 0.3); hiss(0.18, 0.5, 'lowpass', 800, 200, 0.7); },

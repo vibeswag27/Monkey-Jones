@@ -27,11 +27,15 @@ class FX {
     this.points.frustumCulled = false; this.points.renderOrder = 6;
     scene.add(this.points);
     this.next = 0; this.geo = g;
+    this.cx = 0; this.cz = 0;
   }
+  // Whatever is thrown off from now on is carried along at this speed over the ground as well as its own (0, 0: nothing is).
+  // A runner going faster than the camera can dodge sets it to his own speed, so that what he throws off travels with him and is not left hanging for the camera to run into.
+  carry(vx, vz) { this.cx = vx; this.cz = vz; }
   spawn(x, y, z, vx, vy, vz, hex, size, ttl, grav, grow, kind, alpha) {
     const i = this.next; this.next = (i + 1) % this.max;
     this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
-    this.vel[i * 3] = vx; this.vel[i * 3 + 1] = vy; this.vel[i * 3 + 2] = vz;
+    this.vel[i * 3] = vx + this.cx; this.vel[i * 3 + 1] = vy; this.vel[i * 3 + 2] = vz + this.cz;
     _c.setHex(hex); this.col[i * 3] = _c.r; this.col[i * 3 + 1] = _c.g; this.col[i * 3 + 2] = _c.b;
     this.size0[i] = size; this.life[i] = ttl; this.ttl[i] = ttl; this.grav[i] = grav || 0; this.grow[i] = grow || 0;
     this.kind[i] = kind || 0; this.a0[i] = alpha === undefined ? 1 : alpha;
@@ -43,6 +47,19 @@ class FX {
   sparkle(x, y, z, n, hex) {
     for (let i = 0; i < n; i++) this.spawn(x, y, z, (Math.random() - 0.5) * 3.4, (Math.random() - 0.2) * 3.4, (Math.random() - 0.5) * 3.4, hex || 0xfff3a8, 0.34 + Math.random() * 0.3, 0.3 + Math.random() * 0.2, 2, -0.6, 1, 1);
   }
+  // One star of a trail: carried along with its maker, it falls behind him at (bx, bz) and is gone before it reaches the camera.
+  trail(x, y, z, bx, bz, hex) {
+    this.spawn(x + (Math.random() - 0.5) * 0.7, y, z + (Math.random() - 0.5) * 0.7, bx + (Math.random() - 0.5) * 1.2, 0.4 + Math.random() * 1.4, bz + (Math.random() - 0.5) * 1.2,
+      hex, 0.2 + Math.random() * 0.2, 0.24 + Math.random() * 0.12, 1.5, -0.5, 1, 1);
+  }
+  // The pieces of something broken by a runner at speed: flung on ahead of him (by up to ax, az more than whatever carries them) and outwards, and gone in half a second.
+  shards(x, y, z, n, hex, ax, az) {
+    for (let i = 0; i < n; i++) {
+      const k = 0.3 + Math.random() * 0.9;
+      this.spawn(x + (Math.random() - 0.5) * 1.2, y + Math.random() * 1.6, z + (Math.random() - 0.5) * 0.8,
+        ax * k + (Math.random() - 0.5) * 7, 2 + Math.random() * 6, az * k + (Math.random() - 0.5) * 7, hex, 0.22 + Math.random() * 0.3, 0.45 + Math.random() * 0.25, 20, 0, 0, 1);
+    }
+  }
   debris(x, y, z, n, hex) {
     for (let i = 0; i < n; i++) this.spawn(x + (Math.random() - 0.5) * 1.2, y + Math.random() * 2, z + (Math.random() - 0.5) * 0.8,
       (Math.random() - 0.5) * 9, 2 + Math.random() * 6, (Math.random() - 0.5) * 9, hex, 0.26 + Math.random() * 0.4, 0.7 + Math.random() * 0.4, 20, 0, 0, 1);
@@ -53,7 +70,7 @@ class FX {
     for (let i = 0; i < n; i++) this.spawn(x + (Math.random() - 0.5) * sp, y + (Math.random() - 0.5) * sp, z + (Math.random() - 0.5) * sp,
       (Math.random() - 0.5) * 0.7, 1.1 + Math.random() * 1.5, (Math.random() - 0.5) * 0.7, 0xeaffff, (0.12 + Math.random() * 0.2) * k, 1.1 + Math.random() * 1.1, -1.6, 0.45, 2, 0.9);
   }
-  clear() { this.life.fill(0); this.size.fill(0); this.geo.attributes.aSize.needsUpdate = true; } // a new run starts with clean air
+  clear() { this.life.fill(0); this.size.fill(0); this.geo.attributes.aSize.needsUpdate = true; this.cx = this.cz = 0; } // a new run starts with clean, still air
   splash(x, z) {
     for (let i = 0; i < 26; i++) { const a = Math.random() * TAU, r = 1 + Math.random() * 3.5; this.spawn(x, WATER_Y + 0.1, z, Math.cos(a) * r, 5 + Math.random() * 7, Math.sin(a) * r, i % 3 ? 0xffffff : 0xa9f0f2, 0.3 + Math.random() * 0.5, 0.8 + Math.random() * 0.5, 17, 0, 0, 0.95); }
     for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU; this.spawn(x + Math.cos(a) * 0.5, WATER_Y + 0.12, z + Math.sin(a) * 0.5, Math.cos(a) * 3.2, 0.1, Math.sin(a) * 3.2, 0xffffff, 0.7, 0.9, 0, 1.2, 0, 0.8); }

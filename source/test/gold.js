@@ -283,6 +283,142 @@ const rig = require('./rig');
     return { ok: held === 0 && free > 15, held, free };
   });
 
+  // ── look, sound and the first-time hint ──
+  await test('look: every character turns gold while it lasts and is himself again when it ends, on a restart, and on going home', () => {
+    const G = __mj.Game, m = __mj, d = m.Save.data, got = [];
+    const gilt = () => { let n = 0, plain = 0; m.monkey.root.traverse((o) => { if (o.isMesh && o.material === m.MAT.midas) n++; if (o.isMesh && o.material === m.MAT.char) plain++; }); return { n, plain }; };
+    for (const who of ['monkey', 'smokey', 'pig', 'elephant', 'dino', 'seal', 'orca']) {
+      const sea = who === 'seal' || who === 'orca';
+      const begin = () => { T.start(sea ? 'tide' : 'ruins'); d.owned = ['monkey', who]; if (sea) d.seaChar = who; else d.char = who; G.restart(); let t = 0; while (G.state !== 'run' && t < 5) { G.update(T.dt); t += T.dt; } };
+      begin(); const before = gilt(); T.gold(1); T.wait(0.3); const on = gilt();
+      let n = 0; while (G.state === 'run' && G.golden() && n++ < 900) G.update(T.dt); const ended = gilt();
+      T.gold(30); T.wait(0.2); const again = gilt(); G.restart(); const restarted = gilt();
+      begin(); T.gold(30); T.wait(0.2); G.toTitle(); const home = gilt();
+      got.push({ who, id: m.monkey.id, ok: m.monkey.id === who && before.n === 0 && before.plain > 0 && on.n === before.plain && on.plain === 0 && ended.n === 0 && again.n > 0 && restarted.n === 0 && home.n === 0, before, on, ended, restarted, home });
+    }
+    d.char = 'monkey'; d.seaChar = null; d.map = 'ruins';
+    return { ok: got.every((g) => g.ok), bad: got.filter((g) => !g.ok) };
+  });
+  await test('look: the HUD shows a timer for gold that runs down, the screen\'s edge glows, and the golden button waits its turn', () => {
+    const G = __mj.Game; T.start(); __mj.UI.gold();
+    const chip = () => [...document.querySelectorAll('#powers .pw')].find((e) => /Gold/.test(e.textContent)), bar = () => +(/scaleX\(([\d.]+)\)/.exec(chip().querySelector('i').style.transform) || [0, 0])[1];
+    const glow = () => document.getElementById('goldGlow').classList.contains('on'), dim = () => document.getElementById('btnGold').classList.contains('on');
+    const idle = { shown: chip().style.display !== 'none', glow: glow(), dim: dim() };
+    T.gold(4); T.wait(0.5); const early = { shown: chip().style.display !== 'none', bar: bar(), glow: glow(), dim: dim() };
+    T.wait(2); const late = { bar: bar() };
+    let n = 0; while (G.state === 'run' && G.golden() && n++ < 900) G.update(T.dt); T.wait(0.1);
+    const after = { shown: chip().style.display !== 'none', glow: glow(), dim: dim() };
+    return { ok: !idle.shown && !idle.glow && !idle.dim && early.shown && early.glow && early.dim && early.bar > 0.8 && late.bar < 0.45 && late.bar > 0.2 && !after.shown && !after.glow && !after.dim, idle, early, late, after };
+  });
+  await test('look: at gold\'s top speed the camera opens up by no more than 14 degrees', () => {
+    const G = __mj.Game, m = __mj; T.start('ruins', 12); T.gold(30); let top = 0; T.wait(3, () => { top = Math.max(top, m.Cam.fovKick); });
+    return { ok: G.state === 'run' && top > 9 && top <= 14, top };
+  });
+  await test('look: he trails gold at the same rate on a slow frame as on a fast one, and the trail keeps behind him, short of the camera', () => {
+    const G = __mj.Game, m = __mj, P = m.Player, fx = m.fx, got = {};
+    const real = fx.trail; let n = 0, idx = [];
+    if (!real) return { ok: false, why: 'no trail' };
+    fx.trail = function (...a) { n++; idx.push(fx.next); return real.apply(fx, a); };
+    for (const [name, dt] of [['fast', 1 / 60], ['slow', 1 / 20]]) {
+      const seg = T.start('ruins', 3); T.gold(30); T.dt = 1 / 60; T.wait(0.7);  // up to speed (and the whole second that follows is on the first stretch, which is never under 99 m)
+      n = 0; idx = []; T.dt = dt; T.wait(1); T.dt = 1 / 60;
+      const d = P.seg.dir, lag = [];
+      for (const i of idx.slice(-12)) if (fx.life[i] > 0) lag.push(-((fx.pos[i * 3] - P.wx) * d.fx + (fx.pos[i * 3 + 2] - P.wz) * d.fz));
+      got[name] = { n, most: Math.max(...lag), least: Math.min(...lag), alive: lag.length, straight: P.seg === seg };
+    }
+    fx.trail = real;
+    const fine = (g) => g.straight && g.n >= 25 && g.n <= 50 && g.alive > 0 && g.least > -1.2 && g.most < 4.5;
+    return { ok: fine(got.fast) && fine(got.slow) && Math.abs(got.fast.n - got.slow.n) <= 6, got };
+  });
+  await test('look: nothing he throws off while gold hangs in the air for the camera to run into: smashed pieces, dust, sparkle and his trail all keep ahead of it (60 and 20 frames a second, levels 3 and 12)', () => {
+    const G = __mj.Game, m = __mj, P = m.Player, fx = m.fx, got = [];
+    const real = fx.spawn; let born = new Set();
+    fx.spawn = function (...a) { born.add(fx.next); return real.apply(fx, a); };
+    for (const level of [3, 12]) for (const dt of [1 / 60, 1 / 20]) {
+      const seg = T.start('ruins', level); fx.clear(); born = new Set();
+      for (let s = P.s + 14, i = 0; s < seg.len - 30; s += 11, i++) { if (i % 3 === 0) T.pillar(seg, 1, s); else if (i % 3 === 1) T.rubble(seg, 1, s); else T.log(seg, s); }
+      T.lane(0); T.gold(30); T.dt = dt;
+      let worst = 0, seen = 0, hops = 0, t = 0;
+      while (G.state === 'run' && P.seg === seg && P.s < seg.len - 34 && t < 4) {
+        if (P.grounded && t > 0.4 * (hops + 1)) { P.jump(); hops++; }           // a hop now and then, for the dust of landing
+        G.update(T.dt); t += T.dt;
+        const d = seg.dir;
+        for (const i of born) {
+          if (!(fx.life[i] > 0)) { born.delete(i); continue; }
+          if (fx.alpha[i] <= 0.25 || fx.size[i] <= 0.05) continue;                // (faded out, or shrunk away: nothing to see)
+          seen++; worst = Math.max(worst, -((fx.pos[i * 3] - P.wx) * d.fx + (fx.pos[i * 3 + 2] - P.wz) * d.fz));
+        }
+      }
+      T.dt = 1 / 60;
+      got.push({ level, fps: Math.round(1 / dt), worst: +worst.toFixed(2), seen, smashed: G.run.smashed || 0, hops, state: G.state });
+    }
+    fx.spawn = real;
+    return { ok: got.every((g) => g.state === 'run' && g.smashed >= 3 && g.hops >= 1 && g.seen > 200 && g.worst < 4.6), got };
+  });
+  await test('look: a crate\'s splinters fly on with him too, at any speed: none is left hanging for the camera to run into', () => {
+    const G = __mj.Game, m = __mj, P = m.Player, fx = m.fx, got = [];
+    const real = fx.spawn; let born = new Set();
+    fx.spawn = function (...a) { born.add(fx.next); return real.apply(fx, a); };
+    for (const level of [2, 12]) {
+      const seg = T.start('ruins', level); fx.clear(); T.lane(0); m.addCrate(seg, 1, P.s + 12); T.to(P.s + 6); born = new Set();
+      let worst = 0, seen = 0; const had = m.Save.data.gold;
+      const crate = seg.pickups[seg.pickups.length - 1];
+      T.wait(1.2, () => { if (!crate.got) born.clear(); const d = seg.dir; for (const i of born) { if (!(fx.life[i] > 0)) { born.delete(i); continue; } if (fx.alpha[i] <= 0.25 || fx.size[i] <= 0.05) continue; seen++; worst = Math.max(worst, -((fx.pos[i * 3] - P.wx) * d.fx + (fx.pos[i * 3 + 2] - P.wz) * d.fz)); } });
+      got.push({ level, worst: +worst.toFixed(2), seen, took: m.Save.data.gold - had });
+    }
+    fx.spawn = real;
+    return { ok: got.every((g) => g.took === 1 && g.seen > 50 && g.worst < 4.6), got };
+  });
+  const flicker = () => {                                                                      // a 3-second gold, watched frame by frame
+    const G = __mj.Game, m = __mj, S = m.Sound.sfx, n = { on: 0, off: 0, tick: 0 }, real = { on: S.goldOn, off: S.goldOff, tick: S.goldTick };
+    S.goldOn = () => { n.on++; }; S.goldOff = () => { n.off++; }; S.goldTick = () => { n.tick++; };
+    T.start(); T.gold(3);
+    let early = 0, late = 0, was = true, frames = 0, top = 0;
+    while (G.state === 'run' && G.run.gold > 0 && frames++ < 400) {
+      G.update(T.dt); const g = m.monkey.gilt; top = Math.max(top, m.Cam.fovKick);
+      if (was && !g && G.run.gold > 0) { if (G.run.gold > 1.5) early++; else late++; } // (its going out for good at the end is not a flicker)
+      was = g;
+    }
+    let k = 0; while (G.state === 'run' && G.golden() && k++ < 900) G.update(T.dt);
+    S.goldOn = real.on; S.goldOff = real.off; S.goldTick = real.tick;
+    return { early, late, n, after: m.monkey.gilt, top, reduced: matchMedia('(prefers-reduced-motion: reduce)').matches };
+  };
+  await test('look: in its last second and a half the gold flickers on him, no more than three times a second, and a tick counts it down; it starts and ends with a sound of its own', (src) => {
+    const r = (0, eval)('(' + src + ')')(); // (the watcher above, run in the page)
+    return { ok: r.early === 0 && r.late >= 3 && r.late <= 4 && r.n.on === 1 && r.n.off === 1 && r.n.tick >= 4 && r.n.tick <= 7 && r.after === false, r };
+  }, flicker.toString());
+  await scene('look: for a player who has asked for less motion the gold does not flicker (it holds till it ends) and the camera does not open up', async () => {
+    const calm = await open({ w: 390, h: 760, dpr: 1, reduced: true });
+    await rig(calm.page);
+    const r = await calm.page.evaluate((src) => (0, eval)('(' + src + ')')(), flicker.toString());
+    await calm.browser.close();
+    return { ok: r.reduced && r.early === 0 && r.late === 0 && r.top === 0 && r.n.on === 1 && r.n.off === 1 && r.after === false, r };
+  });
+  await scene('sound: with the sound engine running, gold taking hold, its ticks, its end and a crate bursting each make their sound, without error', async () => {
+    await reloadWith({ runs: 5, gold: 5 });
+    await page.evaluate(() => { window.__osc = 0; const P = OscillatorNode.prototype, o = P.start; P.start = function () { window.__osc++; return o.apply(this, arguments); }; });
+    await page.click('#btnRun', { force: true });                                  // a real tap, which is what wakes the sound
+    await page.evaluate(() => { const G = __mj.Game; let t = 0; while (G.state !== 'run' && t < 5) { G.update(1 / 60); t += 1 / 60; } });
+    const r = await page.evaluate(() => {
+      const S = __mj.Sound, got = { state: S.state };
+      for (const k of ['goldOn', 'goldTick', 'goldOff', 'crate']) { const n0 = window.__osc; try { S.sfx[k](); got[k] = window.__osc - n0; } catch (e) { got[k] = String(e); } }
+      return got;
+    });
+    return { ok: r.state === 'running' && ['goldOn', 'goldTick', 'goldOff', 'crate'].every((k) => r[k] > 0), r };
+  });
+  await test('hint: from the third run on, until one has ever been used, a run begins with "Double tap for the Golden Banana"; never otherwise', () => {
+    const G = __mj.Game, m = __mj, d = m.Save.data, got = {};
+    const begin = (runs, gold, used) => { d.runs = runs; d.gold = gold; d.goldUsed = used; d.map = 'ruins'; G.restart(); let t = 0; while (G.state !== 'run' && t < 5) { G.update(T.dt); t += T.dt; } T.wait(0.4); };
+    const hint = () => (document.getElementById('hint').classList.contains('on') ? document.getElementById('hintText').textContent : '');
+    begin(2, 5, false); got.shown = hint(); T.wait(6.2, () => m.Bot.think()); got.later = hint();
+    begin(2, 5, false); T.wait(0.3); G.useGold(); T.wait(0.2); got.afterUse = hint(); got.usedFlag = d.goldUsed;
+    begin(6, 5, true); got.veteran = hint();
+    begin(6, 0, false); got.none = hint();
+    begin(1, 5, false); got.coaching = hint();
+    d.runs = 5; d.goldUsed = false; d.gold = 5;
+    return { ok: got.shown === 'Double tap for the Golden Banana' && got.later === '' && got.afterUse === '' && got.usedFlag === true && got.veteran === '' && got.none === '' && !/Golden/.test(got.coaching), got };
+  });
+
   const bad = errors.filter((e) => !/ReadPixels/.test(e));
   console.log(bad.join('\n') || 'no errors');
   console.log(fails || bad.length ? `FAIL: ${fails} of ${ran}` : `PASS: all ${ran} golden banana rules hold`);
