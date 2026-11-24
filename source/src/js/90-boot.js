@@ -19,6 +19,11 @@ const Bot = {
       if (o.gone || o.s1 < from || o.type === 'pad') continue;
       if (o.s0 > to) break;
       if (o.s0 >= fly0 && o.s0 <= fly1) continue; // under the bounce
+      if (o.type === 'mover') { // a bobber is best gone round; a sweeper is hopped if it will be anywhere near this lane when he gets there
+        if (o.kind === 'bob') { if (o.lane === li) see('block', o.s0, o.s); }
+        else if (Math.abs(LANE_W * Math.sin(o.w * (Game.time + Math.max(0, o.s0 - P.s) / v) + o.ph) - x) < 1.75) see('jump', o.s0, o.s);
+        continue;
+      }
       if (o.type === 'pillar') { if (o.lane === li) see('block', o.s0, o.s); }
       else if (o.type === 'beam') see('slide', o.s0, o.s);
       else if (x + 0.36 > o.x0 && x - 0.36 < o.x1) see('jump', o.s0, o.s);

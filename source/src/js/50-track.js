@@ -45,6 +45,14 @@ class Seg {
   }
 }
 
+// Where a moving obstacle is at time t on the game clock: a sweeper's place across the path, a bobber's height over it.
+function moverBox(o, t) {
+  const a = o.w * t + o.ph;
+  if (o.kind === 'side') { o.x = LANE_W * Math.sin(a); o.x0 = o.x - 0.65; o.x1 = o.x + 0.65; }
+  else { o.y0 = 0.05 + 0.775 * (1 - Math.cos(a)); o.y1 = o.y0 + 0.62; }
+  return o;
+}
+
 // ── layout: decide what goes where on a stretch ──
 function genSegment(seg, W) {
   const rng = W.rng, L = seg.level, v = levelSpeed(L);
@@ -89,6 +97,9 @@ function genSegment(seg, W) {
     for (let i = -n; i <= n; i++) { const ds = i * 1.9; nana(mid + ds, lane, 0.62 + JUMP_H * 0.93 * (1 - (ds / half) * (ds / half))); }
   };
 
+  // Movers only ever trip. A sweeper trundles from kerb to kerb, waist high; a bobber rides up and down over one lane, from the floor to overhead.
+  const addSweeper = (s) => O.push({ type: 'mover', kind: 'side', trip: true, s, s0: s - 0.5, s1: s + 0.5, w: TAU / rng.range(2.3, 3.1), ph: rng.f() * TAU, x: 0, x0: -0.65, x1: 0.65, y0: 0, y1: 1.15 });
+  const addBobber = (s, lane, w, ph) => O.push({ type: 'mover', kind: 'bob', trip: true, s, s0: s - 0.45, s1: s + 0.45, lane, w, ph, cx: laneX(lane), x0: laneX(lane) - 0.7, x1: laneX(lane) + 0.7, y0: 0.05, y1: 0.67 });
   const bow = (ps, lane, t0, t1) => { for (let t = t0; t <= t1 + 1e-6; t += 1.9 / v) nana(ps + v * t, lane, 0.62 + PAD_V * t - (GRAVITY / 2) * t * t); }; // bananas strung along the path of a bounce
   // The low road beside a raised walkway: things to hop over and, where there is a lane beside it to dodge into, now and then a totem.
   const lowRoad = (d) => {
@@ -190,6 +201,22 @@ function genSegment(seg, W) {
       line(s - 7.6, s + 1.9, open);
       return len + landing;
     },
+    // A stone wheel (under water, a crab) trundling from kerb to kerb: hop it, or be where it is not.
+    sweeper(s) {
+      const lane = rng.int(0, 2);
+      addSweeper(s + 0.5);
+      if (rng.chance(0.6)) arc(s + 0.5, lane); else line(s - 3.3, s + 4.3, lane);
+      return 1.2;
+    },
+    // A mask on a vine (a jellyfish) riding up and down over one lane, later sometimes two: go round it, or time it and go under or over.
+    bobber(s) {
+      const a = rng.int(0, 2), two = prog >= 2.5 && rng.chance(0.4), b = two ? rng.pick(others(a)) : -1, w = TAU / rng.range(2.6, 3.4), ph = rng.f() * TAU;
+      addBobber(s + 0.5, a, w, ph);
+      if (two) addBobber(s + 0.5, b, w, ph + Math.PI);
+      if (two || rng.chance(0.5)) line(s - 5.2, s + 4.3, rng.pick([0, 1, 2].filter((l) => l !== a && l !== b)));
+      else line(s - 3.3, s + 4.3, a, 0.5); // bananas along the floor beneath it, for the bold
+      return 1.2;
+    },
     bananas(s) {
       let lane = rng.int(0, 2), ss = s;
       for (let i = 0; i < 3; i++) { line(ss, ss + 5.7, lane); ss += 7.6; lane = clamp(lane + rng.pick([-1, 1]), 0, 2); }
@@ -197,7 +224,7 @@ function genSegment(seg, W) {
     },
   };
   const need = { pillars1: 1.3, pillars2: 1.3, log: 1, beam: 1, beamPillar: 1.3, gap: 5 * ROW, narrow: 8 * ROW, zig: dZig + 1.3, logBeam: dLogBeam + 1, beamLog: dBeamLog + 1, rubble: 1.2, mixed: 1.3, bananas: 21,
-    deck: RAMP_LEN + 12 + landing, wall: 8 + landing, padDeck: 2 + 0.25 * v + Math.max(12, 1.1 * v) + landing, padPile: 1 + v * PAD_AIR + 0.55 * v };
+    deck: RAMP_LEN + 12 + landing, wall: 8 + landing, padDeck: 2 + 0.25 * v + Math.max(12, 1.1 * v) + landing, padPile: 1 + v * PAD_AIR + 0.55 * v, sweeper: 1.2, bobber: 1.2 };
 
   if (tutorial) { // a gentle opening that teaches one move at a time
     line(7.6, 22.8, 1);
@@ -218,6 +245,7 @@ function genSegment(seg, W) {
         [on(0.5, 2.3), 'gap'], [on(0.75, 1.6), 'rubble'], [on(1, 1.6 * hard * hop), 'mixed'], [on(1.75, 1.3 * hard), 'beamPillar'],
         [on(2, 1.8 * hard), 'narrow'], [on(2.25, 1.8 * hard), 'zig'], [on(2.75, 1.5 * hard * hop), 'logBeam'], [on(2.75, 1.3 * hard * hop), 'beamLog'],
         [on(0.25, 2.6), 'deck'], [on(1, 1.1 * hard), 'wall'], [on(0.75, 2), 'padDeck'], [on(1.25, 1.2 * Math.min(hard, 2)), 'padPile'],
+        [on(1, 2.2), 'sweeper'], [on(1.5, 2), 'bobber'],
       ];
       let name = rng.weighted(table);
       if (name === last) name = rng.weighted(table);
@@ -237,6 +265,7 @@ function genSegment(seg, W) {
   }
   O.sort((a, b) => a.s0 - b.s0);
   seg.pads = O.filter((o) => o.type === 'pad');
+  seg.movers = O.filter((o) => o.type === 'mover');
   B.sort((a, b) => a.s - b.s);
   for (const b of B) { b.wx = seg.wx(b.s, b.x); b.wz = seg.wz(b.s, b.x); }
 }
@@ -394,6 +423,14 @@ function buildSegment(seg, W) {
     else if (o.type === 'beam') addBeamMesh(ob, ol, glow, rng, z);
     else if (o.type === 'pad') addPadMesh(ob, ol, glow, rng, laneX(o.lane), z, sea);
     o.rOb = [a, ob.n]; o.rOl = [b, ol.n]; o.rGl = [c, glow.n];
+  }
+
+  // things that move get meshes of their own, posed every frame (see World.update)
+  let frameAt = -9;
+  for (const o of seg.movers) {
+    group.add(makeMover(o, sea));
+    if (o.vine) { group.add(o.vine); if (Math.abs(o.s - frameAt) > 1) { addBobFrame(gb, rng, -o.s); frameAt = o.s; } }
+    moverBox(o, 0); poseMover(o, 0);
   }
 
   // scenery beside the path
@@ -588,6 +625,7 @@ class World {
         n++;
       }
       if (seg.critters) for (const c of seg.critters) c.update(t);
+      for (const o of seg.movers) { moverBox(o, t); if (o.mesh) poseMover(o, t); }
       if (seg.sea && seg.pads && wet) for (const o of seg.pads) { // the bubble jets blow, while they are near enough to see
         if (o.used) continue;
         const jx = seg.wx(o.s, laneX(o.lane)), jz = seg.wz(o.s, laneX(o.lane));

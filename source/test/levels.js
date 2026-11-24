@@ -25,6 +25,7 @@ const { open, until } = require('./lib2');
           for (const o of P.seg.pads || []) { // what of the new furniture did he actually meet, and what did he do about it?
             if (!o.met && P.s > o.s1) { o.met = true; meet(o.d ? 'padDecks' : 'padPiles'); if (o.used) meet(o.d ? 'padDecksBounced' : 'padPilesBounced'); }
           }
+          for (const o of P.seg.movers || []) if (!o.met && P.s > o.s1) { o.met = true; meet(o.kind === 'side' ? 'sweepers' : 'bobbers'); }
           for (const d of P.seg.decks) {
             if (!d.met && P.s > d.s0) { d.met = true; meet(d.ramp ? 'decks' : d.pad ? 'padDeckBlocks' : 'walls'); }
             if (!d.stood && P.grounded && P.y > d.h - 0.1 && P.s > d.s0 && P.s < d.s1 && Math.abs(P.x - (d.x0 + d.x1) / 2) < 0.9) { d.stood = true; meet(d.ramp ? 'decksClimbed' : d.pad ? 'padDecksLandedOn' : 'wallsTopped'); }

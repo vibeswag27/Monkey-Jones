@@ -86,3 +86,106 @@ function addPadMesh(ob, ol, glow, rng, x, z, sea) {
     }
   }
 }
+
+// ── things that move (obstacle type 'mover'): each has a mesh of its own, posed every frame from the game clock ──
+const BOB_BAR = 5.7; // how high the bar is that a mask's vine hangs from: clear of a rocket's flight
+let MOVER_GEO = null;
+function moverGeo() {
+  if (MOVER_GEO) return MOVER_GEO;
+  const make = (fn) => { const b = new GeoBuilder(), k = new GeoBuilder(false), g = new GeoBuilder(); fn(b, k, g); return { env: b.build(), ink: k.build(), glow: g.build() }; };
+  const rx = Math.PI / 2;
+  const jelly = (col, spot) => make((b, k, g) => { // drawn from its lowest point up: a bell, a lit frill, a fringe of tentacles and a small calm face
+    b.add(SHAPE.sph, M(0, 0.36, 0, 1.16, 0.52, 1.16), col);
+    k.add(SHAPE.sph, M(0, 0.36, 0, 1.16 + 2 * OT, 0.52 + 2 * OT, 1.16 + 2 * OT));
+    g.add(SHAPE.cyl12, M(0, 0.15, 0, 0.94, 0.07, 0.94), spot);
+    for (let i = 0; i < 7; i++) { const a = (i / 7) * TAU; b.add(SHAPE.box, M(Math.cos(a) * 0.34, 0.1 - (i % 2) * 0.03, Math.sin(a) * 0.34, 0.07, 0.2 + (i % 2) * 0.1, 0.07), spot); }
+    for (const [dx, dz, r] of [[-0.28, 0.3, 0.2], [0.24, 0.22, 0.16], [0.05, -0.2, 0.22], [-0.2, -0.25, 0.14], [0.3, -0.12, 0.13]]) b.add(SHAPE.sphLo, M(dx, 0.365 + 0.26 * Math.sqrt(1 - (dx * dx + dz * dz) / 0.3364), dz, r, 0.05, r), spot);
+    for (const sd of [-1, 1]) b.add(SHAPE.sphLo, M(sd * 0.2, 0.36, 0.57, 0.1, 0.13, 0.06), 0x3a2a4a);
+    b.add(SHAPE.box, M(0, 0.26, 0.56, 0.14, 0.03, 0.04), 0x3a2a4a);
+  });
+  MOVER_GEO = {
+    // a stone wheel, 1.25 m across, drawn about its own centre so that it can roll
+    wheel: make((b, k, g) => {
+      const D = 1.25;
+      b.add(SHAPE.cyl12, M(0, 0, 0, D, 0.66, D, rx, 0, 0), 0xbcc9cf);
+      k.add(SHAPE.cyl12, M(0, 0, 0, D + 2 * OT, 0.66 + 2 * OT, D + 2 * OT, rx, 0, 0));
+      for (const f of [-1, 1]) {
+        b.add(SHAPE.cyl12, M(0, 0, f * 0.325, D * 0.8, 0.03, D * 0.8, rx, 0, 0), 0x93a9b5);            // a sunk ring on each face
+        b.add(SHAPE.cyl12, M(0, 0, f * 0.34, D * 0.3, 0.04, D * 0.3, rx, 0, 0), 0x33424c);             // the hub
+        for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + 0.4; g.add(SHAPE.box, M(Math.cos(a) * D * 0.27, Math.sin(a) * D * 0.27, f * 0.345, D * 0.22, 0.1, 0.03, 0, 0, a), 0xffb238); } // four glyphs, so the eye can see it turn
+      }
+      b.add(SHAPE.box, M(0.26, 0.55, 0, 0.36, 0.1, 0.6, 0, 0, -0.42), 0x5fb85a);                       // moss that goes round with it
+      b.add(SHAPE.box, M(-0.45, -0.38, 0, 0.3, 0.1, 0.56, 0, 0, 0.9), 0x5fb85a);
+    }),
+    // a crab, standing on the floor and facing up the path: it goes about sideways, as crabs do
+    crab: make((b, k) => {
+      const shell = 0xff6a4a, dark = 0xd94a33;
+      b.add(SHAPE.sph, M(0, 0.4, 0, 1.0, 0.5, 0.78), shell);
+      k.add(SHAPE.sph, M(0, 0.4, 0, 1.0 + 2 * OT, 0.5 + 2 * OT, 0.78 + 2 * OT));
+      b.add(SHAPE.sph, M(0, 0.31, 0.1, 0.82, 0.3, 0.66), 0xffd2b8);
+      for (const sd of [-1, 1]) {
+        b.add(SHAPE.box, M(sd * 0.2, 0.72, 0.22, 0.07, 0.24, 0.07), shell);                           // an eye on a stalk
+        b.add(SHAPE.sphLo, M(sd * 0.2, 0.86, 0.24, 0.18, 0.18, 0.18), 0xffffff);
+        b.add(SHAPE.sphLo, M(sd * 0.2, 0.87, 0.32, 0.08, 0.09, 0.05), 0x241c18);
+        b.add(SHAPE.sph, M(sd * 0.66, 0.5, 0.3, 0.42, 0.34, 0.3, 0, 0, sd * 0.5), shell);             // a claw held up
+        k.add(SHAPE.sph, M(sd * 0.66, 0.5, 0.3, 0.42 + 2 * OT, 0.34 + 2 * OT, 0.3 + 2 * OT, 0, 0, sd * 0.5));
+        b.add(SHAPE.box, M(sd * 0.75, 0.6, 0.33, 0.26, 0.04, 0.22, 0, 0, sd * 0.5), 0x7a2418);
+        for (let i = 0; i < 3; i++) b.add(SHAPE.box, M(sd * (0.52 + i * 0.03), 0.17, -0.22 + i * 0.2, 0.36, 0.07, 0.07, 0, 0, -sd * 0.75), dark);
+      }
+      b.add(SHAPE.box, M(0, 0.45, 0.385, 0.22, 0.04, 0.03), 0x7a2418);
+    }),
+    // a painted wooden mask, drawn from its chin up
+    mask: make((b, k, g) => {
+      const wood = 0xb07a45, dark = 0x7a4e28;
+      b.add(SHAPE.box, M(0, 0.31, 0, 1.24, 0.62, 0.34), wood);
+      k.add(SHAPE.box, M(0, 0.31, 0, 1.24 + 2 * OT, 0.62 + 2 * OT, 0.34 + 2 * OT));
+      b.add(SHAPE.box, M(0, 0.555, 0.02, 1.3, 0.13, 0.38), 0x10b3ae);
+      b.add(SHAPE.box, M(0, 0.055, 0.02, 1.3, 0.11, 0.38), 0xef5f2b);
+      for (const sd of [-1, 1]) {
+        b.add(SHAPE.box, M(sd * 0.3, 0.44, 0.18, 0.36, 0.08, 0.04, 0, 0, -sd * 0.3), dark);
+        g.add(SHAPE.box, M(sd * 0.3, 0.34, 0.18, 0.26, 0.13, 0.04), 0xffe45c);
+        b.add(SHAPE.box, M(sd * 0.56, 0.3, 0.18, 0.06, 0.3, 0.04), 0xffd23f);
+        b.add(SHAPE.cone4, M(sd * 0.36, 0.86, 0, 0.26, 0.5, 0.08, 0, 0, -sd * 0.3), 0x3fbf6b);
+      }
+      b.add(SHAPE.cone4, M(0, 0.92, 0, 0.3, 0.6, 0.08), 0x58d17f);
+      b.add(SHAPE.box, M(0, 0.17, 0.18, 0.56, 0.1, 0.04), dark);
+      for (const dx of [-0.17, 0, 0.17]) b.add(SHAPE.box, M(dx, 0.19, 0.19, 0.12, 0.07, 0.04), 0xf6ecd6);
+    }),
+    vine: make((b) => { b.add(SHAPE.box, M(0, 0, 0, 0.09, 1, 0.07), 0x2fa35a); }),                      // a metre of vine, stretched to fit
+    jellyA: jelly(0xff8fc7, 0xffd9f2), jellyB: jelly(0xb9a2ff, 0xe6dcff),
+  };
+  return MOVER_GEO;
+}
+// Make the mesh for a mover (and, for a mask, its vine), and note on the obstacle which creature it is.
+function makeMover(o, sea) {
+  const G = moverGeo(), key = o.kind === 'side' ? (sea ? 'crab' : 'wheel') : sea ? (o.lane % 2 ? 'jellyB' : 'jellyA') : 'mask', geo = G[key];
+  const grp = new THREE.Group();
+  for (const [part, mat] of [['env', MAT.env], ['ink', MAT.ink], ['glow', MAT.glow]]) if (geo[part].attributes.position.count) grp.add(sharedMesh(geo[part], mat));
+  o.skin = key.replace(/[AB]$/, ''); o.mesh = grp;
+  if (key === 'mask') o.vine = sharedMesh(G.vine.env, MAT.env);
+  return grp;
+}
+// Put a mover's mesh where the game says it is at time t (moverBox has just been run for the same t).
+function poseMover(o, t) {
+  const m = o.mesh, a = o.w * t + o.ph;
+  if (o.kind === 'side') {
+    if (o.skin === 'crab') { const k = Math.sin(t * 17 + o.ph); m.position.set(o.x, 0.06 * Math.abs(k), -o.s); m.rotation.z = 0.06 * k; m.scale.setScalar(1.2); }
+    else { m.position.set(o.x, 0.625, -o.s); m.rotation.z = -o.x / 0.625; }
+  } else {
+    m.position.set(o.cx, o.y0, -o.s);
+    if (o.skin === 'jelly') { const k = Math.sin(2 * a); m.scale.set(1 - 0.07 * k, 1 + 0.11 * k, 1 - 0.07 * k); }
+    else { m.rotation.z = 0.07 * Math.sin(2 * a + 1); const top = o.y0 + 0.6; o.vine.scale.y = BOB_BAR - top; o.vine.position.set(o.cx, (BOB_BAR + top) / 2, -o.s); }
+  }
+}
+// The bamboo frame over the path that the masks hang from.
+function addBobFrame(gb, rng, z) {
+  const px = FLOOR_HALF + CURB_W / 2, cane = 0xd8bd6e, ring = 0xa98c48;
+  for (const sd of [-1, 1]) {
+    gb.add(SHAPE.cyl12, M(sd * px, BOB_BAR / 2, z, 0.2, BOB_BAR + 0.5, 0.2, 0, 0, sd * 0.03), cane);
+    for (let y = 0.9; y < BOB_BAR; y += 1.2) gb.add(SHAPE.cyl12, M(sd * (px + 0.03 * (y / BOB_BAR - 0.5)), y, z, 0.24, 0.06, 0.24), ring);
+    gb.add(SHAPE.box, M(sd * px, BOB_BAR, z, 0.3, 0.26, 0.3), 0x8b5a31);                              // lashing
+    addVines(gb, rng, sd * px, BOB_BAR - 0.1, z, 2, 0.12, 0.12, 1.4);
+  }
+  gb.add(SHAPE.cyl12, M(0, BOB_BAR, z, 0.18, 2 * px + 0.9, 0.18, 0, 0, Math.PI / 2), cane);
+  for (let x = -2.4; x <= 2.4; x += 1.2) gb.add(SHAPE.cyl12, M(x, BOB_BAR, z, 0.06, 0.22, 0.22, 0, 0, Math.PI / 2), ring);
+}

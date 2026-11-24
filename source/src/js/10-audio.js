@@ -123,6 +123,7 @@ const Sound = (() => {
     stumble() { tone('sawtooth', 260, 85, 0.24, 0.3); hiss(0.18, 0.5, 'lowpass', 800, 200, 0.7); },
     pad() { tone('sine', 170, 640, 0.26, 0.55); tone('triangle', 340, 1280, 0.2, 0.14, 0.02); boing(0.01); }, // a fat springy mushroom
     jet() { hiss(0.42, 0.5, 'bandpass', 420, 2600, 0.8); for (let i = 0; i < 4; i++) { const f = 300 + i * 170; tone('sine', f, f * 2, 0.09, 0.2, i * 0.045); } }, // a column of bubbles taking him up
+    zap() { tone('sawtooth', 1500, 320, 0.12, 0.24); tone('square', 900, 1900, 0.05, 0.1, 0.05); hiss(0.1, 0.22, 'highpass', 3000, 7000, 0.8); }, // a jellyfish's sting
     thud() { tone('sine', 150, 68, 0.11, 0.4); hiss(0.05, 0.12, 'lowpass', 600, 200, 0.7); }, // shouldering a wall that will not move
     bonk() { tone('sine', 200, 52, 0.32, 1.0); tone('square', 880, 440, 0.07, 0.16); hiss(0.13, 0.7, 'lowpass', 1800, 300, 0.7); boing(0.1); },
     whistle() { tone('sine', 1500, 230, 1.05, 0.3); },

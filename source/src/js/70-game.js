@@ -234,6 +234,11 @@ const Player = {
         continue;
       }
       if (ghost) continue;
+      if (o.type === 'mover') { // wherever it has got to by now: a touch is a stumble, whether he ran into it, came down on it or stood up under it
+        moverBox(o, Game.time);
+        if (!o.hit && x + 0.36 > o.x0 && x - 0.36 < o.x1 && y < o.y1 - 0.14 && y + (this.slide > 0 ? 0.78 : 1.45) > o.y0 + 0.08) { o.hit = true; Game.stumble(o); if (this.dead) return; }
+        continue;
+      }
       if (o.type === 'pillar') { // only a head-on hit counts; sideways bumps are handled when you swipe
         if (!o.seen) { o.seen = true; if (hitX && y < o.y1 - 0.3) { Game.hitSolid(o); if (this.dead) return; } } // springs can clear the top
       } else if (o.type === 'beam') {
@@ -390,7 +395,9 @@ const Game = {
     puff(P.wx, P.wz, 7);
     if (Tide.wet) Sound.sfx.shark(); // somewhere behind, something has noticed
     if (o && o.skin === 'clam') { Sound.sfx.clam(); fx.bubbles(P.wx, 0.7, P.wz, 8, 1.1); } // it snaps shut in a huff
-    else if (o && o.type !== 'pillar') fx.debris(P.wx, 0.1, P.wz, 5, o.type === 'log' ? ENV.wood : 0x9aa3a8);
+    else if (o && o.skin === 'crab') { Sound.sfx.clam(); fx.bubbles(P.wx, 0.6, P.wz, 6, 1.0); } // a nip
+    else if (o && o.skin === 'jelly') { Sound.sfx.zap(); fx.sparkle(P.wx, P.y + 0.9, P.wz, 9, 0xfff7b0); } // a sting
+    else if (o && o.type !== 'pillar') fx.debris(P.wx, P.floor + 0.1, P.wz, 5, o.type === 'log' || o.skin === 'mask' ? ENV.wood : 0x9aa3a8);
   },
   // Head-on into the face of a raised walkway. A shield, or the charmed moment after a flight or a bounce, puts him on top of it instead.
   hitDeck(d) {

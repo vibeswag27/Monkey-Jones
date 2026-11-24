@@ -31,6 +31,12 @@ const { open } = require('./lib2');
       put(seg, o) { seg.obstacles.push(o); seg.obstacles.sort((a, b) => a.s0 - b.s0); seg.obI = 0; return o; },
       pad(seg, lane, s, d) { const x = (lane - 1) * 1.9, o = this.put(seg, { type: 'pad', lane, s, s0: s - 0.6, s1: s + 0.6, x0: x - 0.8, x1: x + 0.8, y0: 0, y1: 0.3, d }); if (d) d.pad = o; return o; },
       pillar(seg, lane, s) { const x = (lane - 1) * 1.9; return this.put(seg, { type: 'pillar', s, s0: s - 0.62, s1: s + 0.62, x0: x - 0.72, x1: x + 0.72, y0: 0, y1: 2.8, lane }); },
+      // a mover: 'side' sweeps the lanes as LANE_W * sin(w t + ph); 'bob' rides up and down over one lane, its underside at 0.05 + 0.775 (1 - cos(w t + ph))
+      mover(seg, kind, lane, s, w, ph) {
+        const x = (lane - 1) * 1.9, o = kind === 'side' ? { type: 'mover', kind, trip: true, s, s0: s - 0.5, s1: s + 0.5, w, ph, x0: 0, x1: 0, y0: 0, y1: 1.15 }
+          : { type: 'mover', kind, trip: true, s, s0: s - 0.45, s1: s + 0.45, lane, w, ph, x0: x - 0.7, x1: x + 0.7, y0: 0, y1: 0.62 };
+        seg.movers.push(o); return this.put(seg, o);
+      },
       rubble(seg, lane, s) { const x = (lane - 1) * 1.9; return this.put(seg, { type: 'rubble', s, s0: s - 0.5, s1: s + 0.5, x0: x - 0.8, x1: x + 0.8, y0: 0, y1: 0.6, trip: true, lane }); },
       near(a, b) { return Math.abs(a - b) < 1e-6; },
     };
@@ -139,6 +145,58 @@ const { open } = require('./lib2');
     const G = __mj.Game, P = __mj.Player, seg = T.start(), sp = P.s + 20; T.pad(seg, 1, sp);
     T.to(sp - 3); G.run.slow = 0.45; G.run.speed = 11 * 0.62; T.to(sp + 0.5);
     return { ok: P.bouncing === true && G.run.slow <= 0, slow: G.run.slow, b: P.bouncing };
+  });
+
+  // ── movers ──
+  await test('sweeper: it trips a runner in the lane it is crossing (a stumble, never a death), and not one in the next lane', () => {
+    const G = __mj.Game, P = __mj.Player, got = [];
+    for (const lane of [0, -1]) {
+      const seg = T.start(), sm = P.s + 20; T.mover(seg, 'side', 1, sm, 0, 0); T.lane(lane);
+      const alive = T.to(sm + 3); got.push({ lane, alive, danger: +G.run.danger.toFixed(1) });
+    }
+    return { ok: got[0].alive && got[0].danger > 0 && got[1].alive && got[1].danger <= 0, got };
+  });
+  await test('sweeper: a jump clears it', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), sm = P.s + 20; T.mover(seg, 'side', 1, sm, 0, 0);
+    T.to(sm - 11 * 0.335); G.input('up'); const alive = T.to(sm + 6);
+    return { ok: alive && G.run.danger <= 0 && P.grounded, danger: G.run.danger };
+  });
+  await test('sweeper: where it is depends only on the game clock (in his lane when he arrives: a stumble; a lane away: none)', () => {
+    const G = __mj.Game, P = __mj.Player, got = [], w = 2.4;
+    for (const [off, lane] of [[0, 0], [Math.PI / 2, 0], [Math.PI / 2, 1]]) {
+      const seg = T.start(), sm = P.s + 20, tArr = G.time + (sm - P.s) / 11, o = T.mover(seg, 'side', 1, sm, w, off - w * tArr); T.lane(lane);
+      T.wait(0.5); const moved = o.x0; T.wait(0.3); const moving = Math.abs(o.x0 - moved) > 0.05;
+      const alive = T.to(sm + 3); got.push({ alive, moving, hit: G.run.danger > 0 });
+    }
+    return { ok: got.every((r) => r.alive && r.moving) && got[0].hit && !got[1].hit && got[2].hit, got };
+  });
+  await test('bobber: down low, running into it is a stumble and a jump clears it', () => {
+    const G = __mj.Game, P = __mj.Player, got = [];
+    for (const jump of [false, true]) {
+      const seg = T.start(), sm = P.s + 20; T.mover(seg, 'bob', 1, sm, 0, 0);
+      if (jump) { T.to(sm - 11 * 0.335); G.input('up'); }
+      const alive = T.to(sm + 6); got.push({ jump, alive, hit: G.run.danger > 0 });
+    }
+    return { ok: got[0].alive && got[0].hit && got[1].alive && !got[1].hit, got };
+  });
+  await test('bobber: up high, he runs under it', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), sm = P.s + 20, o = T.mover(seg, 'bob', 1, sm, 0, Math.PI);
+    const alive = T.to(sm + 3);
+    return { ok: alive && G.run.danger <= 0 && Math.abs(o.y0 - 1.6) < 1e-6, danger: G.run.danger, y0: o.y0 };
+  });
+  await test('bobber: at chest height, a standing run trips and a slide goes under', () => {
+    const G = __mj.Game, P = __mj.Player, got = [];
+    for (const slide of [false, true]) {
+      const seg = T.start(), sm = P.s + 20, o = T.mover(seg, 'bob', 1, sm, 0, Math.acos(1 - 1.05 / 0.775));
+      if (slide) { T.to(sm - 3); G.input('down'); }
+      const alive = T.to(sm + 3); got.push({ slide, alive, hit: G.run.danger > 0, y0: +o.y0.toFixed(2) });
+    }
+    return { ok: got[0].alive && got[0].hit && got[1].alive && !got[1].hit && got[0].y0 === 1.1, got };
+  });
+  await test('bobber: it guards its own lane only', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), sm = P.s + 20; T.mover(seg, 'bob', 1, sm, 0, 0); T.lane(1);
+    const alive = T.to(sm + 3);
+    return { ok: alive && G.run.danger <= 0, danger: G.run.danger };
   });
 
   console.log(errors.filter((e) => !/ReadPixels/.test(e)).join('\n') || 'no errors'); if (errors.filter((e) => !/ReadPixels/.test(e)).length) fails++;

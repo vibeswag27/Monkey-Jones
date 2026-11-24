@@ -16,6 +16,8 @@ const { open, until } = require('./lib2');
     ['pad-deck', `(${P}.seg.pads || []).some((o) => o.d && !o.used && ${P}.lane === o.lane - 1 && ${P}.s > o.s - 8 && ${P}.s < o.s - 5)`],
     ['pad-pile', `(${P}.seg.pads || []).some((o) => !o.d && !o.used && ${P}.lane === o.lane - 1 && ${P}.s > o.s - 8 && ${P}.s < o.s - 5)`],
     ['bounce', `${P}.bouncing && ${P}.vy < 1.5`],
+    ['sweeper', `${P}.seg.movers.some((o) => o.kind === 'side' && ${P}.s > o.s - 8 && ${P}.s < o.s - 5.5)`],
+    ['bobber', `${P}.seg.movers.some((o) => o.kind === 'bob' && ${P}.s > o.s - 9 && ${P}.s < o.s - 6.5)`],
   ];
   const only = process.argv[5]; if (only) for (let i = SHOTS.length - 1; i >= 0; i--) if (!only.split(',').includes(SHOTS[i][0])) SHOTS.splice(i, 1);
   const made = [];
