@@ -4,11 +4,13 @@ const _look = new THREE.Vector3(), _nose = new THREE.Vector3();
 const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* not available */ } };
 
 const Save = {
-  data: { best: 0, wallet: 0, music: true, sfx: true, runs: 0, up: {}, char: 'monkey', owned: ['monkey'], map: 'ruins' },
-  fixCast(more) { // Monkey Jones is always unlocked; the chosen runner must be one you own
+  // char: the everyday runner, who can go anywhere. seaChar: the seal or the orca, if one of them has been picked for High Tide (they live nowhere else).
+  data: { best: 0, wallet: 0, music: true, sfx: true, runs: 0, up: {}, char: 'monkey', seaChar: null, owned: ['monkey'], map: 'ruins' },
+  fixCast(more) { // Monkey Jones is always unlocked; whoever is chosen must be someone you may play
     const d = this.data, have = Array.isArray(d.owned) ? d.owned : [], extra = Array.isArray(more) ? more : [];
     d.owned = CHAR_ORDER.filter((k) => k === 'monkey' || have.includes(k) || extra.includes(k));
-    if (!owns(d.char)) d.char = 'monkey';
+    if (!owns(d.char) || CHARS[d.char].sea) d.char = 'monkey';
+    if (!owns(d.seaChar) || !CHARS[d.seaChar].sea) d.seaChar = null;
     if (!MAPS[d.map]) d.map = 'ruins';
   },
   fixLevels(more) { // every power-up has a level from 1 to 6
@@ -20,7 +22,8 @@ const Save = {
     try { const raw = localStorage.getItem('monkeyjones.v1'); if (raw) Object.assign(this.data, JSON.parse(raw)); } catch (e) { /* storage unavailable */ }
     this.fixLevels(extra && extra.save && extra.save.up);
     this.fixCast(extra && extra.save && extra.save.owned);
-    if (extra && extra.save && owns(extra.save.char)) this.data.char = extra.save.char;
+    if (extra && extra.save && owns(extra.save.char) && !CHARS[extra.save.char].sea) this.data.char = extra.save.char;
+    if (extra && extra.save && owns(extra.save.seaChar) && CHARS[extra.save.seaChar].sea) this.data.seaChar = extra.save.seaChar;
     if (extra && extra.save && MAPS[extra.save.map]) this.data.map = extra.save.map;
     if (extra && typeof extra === 'object' && extra.save) {
       const s = extra.save;
@@ -34,7 +37,11 @@ const Save = {
 };
 
 const powerTime = (k) => POWERS[k].t[Save.data.up[k] - 1];
-const owns = (id) => !!CHARS[id] && (FREE_CAST || Save.data.owned.includes(id)); // may this character be played?
+const owns = (id) => !!CHARS[id] && (FREE_CAST.includes(id) || Save.data.owned.includes(id)); // may this character be played?
+// Who runs in the level that is chosen: in High Tide the seal or the orca if one was picked there, otherwise the everyday runner.
+const runner = () => (atSea() && owns(Save.data.seaChar) ? Save.data.seaChar : Save.data.char);
+// A puff where he pushes off or comes down: dust for feet, bubbles for anyone who swims.
+const puff = (x, z, n) => { if (monkey.swims) fx.bubbles(x, SWIM_Y - 0.35, z, n, 0.7); else fx.dust(x, 0, z, n); };
 
 // The tide. At 0 the lagoon lies far below the path; at 1 the ruins are deep under water.
 const Tide = {
@@ -137,7 +144,7 @@ const Player = {
     const sp = Game.run.springs > 0;
     this.vy = JUMP_V * (sp ? SPRING_K : 1); this.grounded = false; this.slide = 0; this.coyote = 0; this.jumpBuf = 0; this.slideOnLand = false;
     if (this.y < 0) this.y = 0;
-    monkey.bounce(sp ? 1.34 : 1.2); fx.dust(this.wx, 0, this.wz, sp ? 8 : 4);
+    monkey.bounce(sp ? 1.34 : 1.2); puff(this.wx, this.wz, sp ? 8 : 4);
     if (sp) Sound.sfx.spring(); else Sound.sfx.jump();
   },
   // Rocket: lift off, and string bananas through the air ahead.
@@ -242,7 +249,7 @@ const Player = {
         if (this.y <= 0 && this.vy <= 0) {
           if (!ghost && seg.overHole(this.s, this.x)) { this.die('fall'); return; }
           this.y = 0; this.vy = 0; this.grounded = true;
-          monkey.bounce(0.8); Sound.sfx.land(); fx.dust(seg.wx(this.s, this.x), 0, seg.wz(this.s, this.x), 5);
+          monkey.bounce(0.8); Sound.sfx.land(); puff(seg.wx(this.s, this.x), seg.wz(this.s, this.x), 5);
           if (this.slideOnLand) this.startSlide();
           else if (this.jumpBuf > 0) this.jump();
         }
@@ -277,7 +284,7 @@ const Game = {
     this.homeK = 1; this.setScene();
     world.reset((Math.random() * 4294967295) >>> 0, Save.data.runs < 2);
     Player.reset(world.cur);
-    Roster.use(Save.data.char); monkey.fresh(); Sound.jet(0);
+    Roster.use(runner()); monkey.fresh(); Sound.jet(0);
     monkey.holdBanana(true);
     boulder.group.visible = false; this.bGap = 15;
     Cam.lookAt = null; Cam.fovKick = 0; Cam.snap(Cam.preset('title'));
@@ -287,7 +294,7 @@ const Game = {
   },
   startIntro(quick) {
     if (this.state !== 'title' && !quick) return;
-    Roster.use(Save.data.char); // in case the character screen was showing someone else
+    Roster.use(runner()); // in case the character screen was showing someone else
     this.run = this.blankRun(); this.death = null;
     this.run.level = world.cur.level; this.run.mult = Math.min(10, this.run.level);
     this.skyP = this.run.level - 1;
@@ -306,7 +313,7 @@ const Game = {
     this.homeK = 0; this.setScene();
     world.reset((Math.random() * 4294967295) >>> 0, Save.data.runs < 2);
     Player.reset(world.cur);
-    Roster.use(Save.data.char); monkey.fresh(); Sound.jet(0);
+    Roster.use(runner()); monkey.fresh(); Sound.jet(0);
     Cam.lookAt = null; Cam.fovKick = 0; UI.hint(null); UI.danger(false);
     this.state = 'title';
     this.startIntro(true);
@@ -345,7 +352,7 @@ const Game = {
     if (run.danger > 0 && this.state === 'run') { P.die('flat'); return; }
     run.danger = 5.5; run.slow = 0.45; run.invuln = 0.75; P.stumbleT = 0;
     monkey.setExpr('squint', 0.75); Sound.sfx.stumble(); Cam.kick(0.55); buzz(40);
-    fx.dust(P.wx, 0.1, P.wz, 7);
+    puff(P.wx, P.wz, 7);
     if (Tide.wet) Sound.sfx.orca(); // somewhere behind, something has noticed
     if (o && o.skin === 'seal') { Sound.sfx.seal(); fx.bubbles(P.wx, 0.7, P.wz, 8, 1.1); } // a rude awakening
     else if (o && o.type !== 'pillar') fx.debris(P.wx, 0.1, P.wz, 5, o.type === 'log' ? ENV.wood : 0x9aa3a8);
@@ -437,9 +444,9 @@ const Game = {
       if (h !== this.hintOn) { this.hintOn = h; UI.hint(h < 0 ? null : HINTS[h]); }
     } else if (this.hintOn >= 0) { this.hintOn = -1; UI.hint(null); }
 
-    if (P.grounded && P.slide <= 0 && !P.flying) { // soft plush footsteps
+    if (P.grounded && P.slide <= 0 && !P.flying) { // soft plush footsteps, or the swish of each stroke
       const ph = Math.floor(monkey.phase / Math.PI);
-      if (ph !== P.stepPh) { P.stepPh = ph; Sound.sfx.step(ph & 1); }
+      if (ph !== P.stepPh) { P.stepPh = ph; if (monkey.swims) Sound.sfx.swish(ph & 1); else Sound.sfx.step(ph & 1); }
     }
     Sound.tempo(114 + (run.speed - SPEED_MIN) * 1.3);
     Cam.fovKick = REDUCED ? 0 : (run.speed - SPEED_MIN) * 0.42 + (P.flying ? 4 : 0);

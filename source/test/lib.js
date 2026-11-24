@@ -27,8 +27,13 @@ async function open({ w = 390, h = 760, manual = true, dpr = 2, touch = true } =
   await page.goto('file://' + path.join(ROOT, 'dist/index.html'));
   await page.waitForFunction(() => window.__mj || document.getElementById('stage').dataset.state === 'fatal', null, { timeout: 30000 });
   await page.evaluate(() => document.fonts.ready);
-  // MJ_MAP=tide (or ruins) runs any test in that level
-  if (process.env.MJ_MAP) await page.evaluate((map) => { const m = window.__mj; m.Save.data.map = map; m.Game.toTitle(); }, process.env.MJ_MAP);
+  // MJ_MAP=tide (or ruins) runs any test in that level; MJ_CHAR=seal (or orca, pig, …) runs it as that character
+  if (process.env.MJ_MAP || process.env.MJ_CHAR) await page.evaluate(({ map, who }) => {
+    const m = window.__mj, d = m.Save.data;
+    if (map) d.map = map;
+    if (who === 'seal' || who === 'orca') d.seaChar = who; else if (who) { d.owned = ['monkey', who]; d.char = who; }
+    m.Game.toTitle();
+  }, { map: process.env.MJ_MAP, who: process.env.MJ_CHAR });
   return { browser, page, errors };
 }
 // advance the game by `secs` in fixed steps, optionally with the autopilot, then draw one frame

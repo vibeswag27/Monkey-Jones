@@ -143,6 +143,7 @@ const Sound = (() => {
     go() { tone('triangle', 1175, 1175, 0.22, 0.34); },
     best() { [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => { const f = semi(392, s); tone('triangle', f, f, 0.22, 0.26, i * 0.08); }); },
     step(alt) { hiss(0.035, 0.07, 'lowpass', alt ? 520 : 440, 200, 0.6); },
+    swish(alt) { hiss(0.17, 0.05, 'bandpass', alt ? 780 : 640, 320, 0.8); }, // one stroke of a tail
   };
 
   // The boulder: a low rumble that swells when it is on your heels.

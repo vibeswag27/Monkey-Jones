@@ -111,7 +111,7 @@ function boot(hot) {
   requestAnimationFrame(frame);
 
   // testing hooks
-  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST; }, set free(v) { FREE_CAST = !!v; Save.fixCast(); } }, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get orca() { return orca; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); } };
+  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get orca() { return orca; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); } };
 }
 
 try {

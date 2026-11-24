@@ -30,14 +30,16 @@ The scripts in `source/test/` drive the game in headless Chrome with Playwright.
 - **High Tide.** The same ruins, deep under water for the whole run. The logs are napping seals, the boulder that chases you is an orca, and the scenery is reef (`Tide` in `70-game.js`, the sea builders in `40-scenery.js`, the seal and orca in `30-characters.js`). On its home screen a seal circles behind the runner and bolts when the chase begins.
 - **Getting harder.** Inside a run, a level is four stretches of track and you go up one at a corner. Each runs 10 % faster than the last and leaves 7 % less room between obstacles, so the difficulty compounds (the numbers are at the top of `00-util.js`). The level number is also the score multiplier, up to ×10, and the time of day moves on with it.
 - **Corners.** You come out of a turn in the lane you went in on (`Player.tryTurn`).
-- **Characters unlocked for testing.** `FREE_CAST` at the top of `30-characters.js` is `true`, so every character can be played without buying it; nothing is spent or recorded as bought. Set it to `false` to put the prices back: whatever was really bought is still there, and a runner that was only borrowed goes back to Monkey Jones.
+- **The seal and the orca.** Two playable characters that live in High Tide and nowhere else (`sea: true` in `CHARS`). They swim instead of running: `SeaCharacter` in `30-characters.js` answers everything the game asks of a `Character`, with a leap for a jump and a dive for a slide, and the same hitbox as everyone, so no layout gets easier or harder. The Characters screen lists them only while High Tide is chosen. `Save.data.char` is the everyday runner; `Save.data.seaChar` is the swimmer picked for High Tide, if any (`runner()` in `70-game.js` decides who is up). Their names, Sealie and Orkie, are stand-ins.
+- **Free for testing.** `FREE_CAST` at the top of `30-characters.js` lists who can be played without being bought (now the seal and the orca); nothing is spent or recorded as bought. Empty the list to put their prices back: whatever was really bought is still there, and a swimmer that was only borrowed steps aside for the everyday runner.
 
-Tests worth running after a change to any of these (add `MJ_MAP=tide` in front to run one in High Tide):
+Tests worth running after a change to any of these (put `MJ_MAP=tide` in front to run one in High Tide, `MJ_CHAR=seal` to run it as the seal):
 
 - `test/states.js`: the two levels on the home screen, pressed with real taps on three screen sizes; nothing of one leaks into the other.
+- `test/final.js`: the characters, with real taps: who is on the list in which level, who runs where after switching, free and bought, and everyone playing every level they are allowed in.
 - `test/levels.js 1 20 6 1600 tide` (or `ruins`): the autopilot plays every level to prove each layout can be passed.
 - `test/turn.js`: lanes through corners.
-- `test/final.js`: the characters, free for testing and with the prices back; everyone plays both levels.
 - `test/tutorial.js`: a first-ever run and its hints, in both levels.
 - `test/homeseal.js`: the home-screen seal keeps clear of the orca when a run starts.
-- `test/sea.js`, `test/home.js`, `test/charshot.js`: pictures in `shots/` for looking at.
+- `test/charshot.js`: the swimmers on the menus, three screen shapes; checks the controls fit.
+- `test/swimmers.js`, `test/sea.js`, `test/home.js`: pictures in `shots/` for looking at.

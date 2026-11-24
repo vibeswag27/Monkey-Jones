@@ -38,14 +38,16 @@ const UI = (() => {
   }
 
   let countTimers = [];
+  // (name, the character) → what the card says. Swimmers get their own wording where running or sinking would be odd.
   const OVER = {
-    bonk: ['Bonk!', (n) => n + ' ran face-first into the ruins.'],
+    bonk: ['Bonk!', (n, c) => n + (c.swims ? ' swam' : ' ran') + ' face-first into the ruins.'],
     fall: ['Splash!', (n) => n + ' went for a swim.'],
     flat: ['Flattened!', (n) => 'The boulder caught up with ' + n + '.'],
-    sink: ['Glub!', (n) => n + ' sank to the sea bed.'],
-    boop: ['Booped!', (n) => 'The orca caught up with ' + n + '.'],
+    sink: ['Glub!', (n, c) => (c.swims ? 'The undertow pulled ' + n + ' down.' : n + ' sank to the sea bed.')],
+    boop: ['Booped!', (n, c) => (c.orca ? 'A much bigger orca' : 'The orca') + ' caught up with ' + n + '.'],
   };
   let browseAt = 0;
+  const cast = () => CHAR_ORDER.filter((k) => !CHARS[k].sea || atSea()); // who can be picked for the level that is chosen: the seal and the orca only show up in High Tide
 
   const api = {
     touch,
@@ -97,7 +99,7 @@ const UI = (() => {
     plunge(bright) { el.plunge.style.filter = bright < 0.95 ? 'brightness(' + (0.25 + 0.75 * bright).toFixed(2) + ')' : ''; replay(el.plunge); }, // a wash of foam as the surface passes the camera (dimmer at night)
     showOver(type, score, run, best) {
       const o = OVER[type] || OVER.bonk;
-      setText(el.overTitle, o[0]); el.overSub.textContent = o[1](monkey.spec.name);
+      setText(el.overTitle, o[0]); el.overSub.textContent = o[1](monkey.spec.name, monkey);
       el.newBest.classList.toggle('on', !!best);
       el.oScore.textContent = fmt(score); el.oDist.textContent = fmt(run.dist) + ' m'; el.oLevel.textContent = run.level; el.oNanas.textContent = fmt(run.nanas); el.oBest.textContent = fmt(Save.data.best);
       api.setState('over');
@@ -131,31 +133,34 @@ const UI = (() => {
       Sound.sfx.power(); api.renderShop();
     },
     // Characters: flick through the real models, unlock with bananas, choose who runs.
-    openChars() { browseAt = Math.max(0, CHAR_ORDER.indexOf(Save.data.char)); api.setState('chars'); api.renderChars(); Cam.to(Cam.preset('chars'), 6); },
-    browse(d) { const n = CHAR_ORDER.length; browseAt = (browseAt + d + n) % n; Sound.sfx.lane(); api.renderChars(); },
+    openChars() { browseAt = Math.max(0, cast().indexOf(runner())); api.setState('chars'); api.renderChars(); Cam.to(Cam.preset('chars'), 6); },
+    browse(d) { const n = cast().length; browseAt = (browseAt + d + n) % n; Sound.sfx.lane(); api.renderChars(); },
     renderChars() {
-      const id = CHAR_ORDER[browseAt], c = CHARS[id], d = Save.data, owned = owns(id), b = el.btnCharGo;
+      const list = cast(), id = list[browseAt], c = CHARS[id], d = Save.data, owned = owns(id), free = FREE_CAST.includes(id) && !d.owned.includes(id), b = el.btnCharGo;
       if (monkey.id !== id) { Roster.use(id); monkey.holdBanana(true); monkey.bounce(1.18); }
       setText(el.charName, c.name); setText(el.charBlurb, c.blurb);
       el.charWallet.textContent = fmt(d.wallet);
-      el.charDots.innerHTML = CHAR_ORDER.map((k, i) => '<i class="' + (i === browseAt ? 'on' : '') + (owns(k) ? '' : ' locked') + '"></i>').join('');
-      if (d.char === id) { b.textContent = 'Selected'; b.disabled = true; }
+      el.charDots.innerHTML = list.map((k, i) => '<i class="' + (i === browseAt ? 'on' : '') + (owns(k) ? '' : ' locked') + '"></i>').join('');
+      if (runner() === id) { b.textContent = 'Selected'; b.disabled = true; }
       else if (owned) { b.textContent = 'Play as ' + c.name; b.disabled = false; }
       else { b.innerHTML = 'Unlock ' + NANA + fmt(c.cost); b.disabled = d.wallet < c.cost; }
-      setText(el.charNeed, !owned && d.wallet < c.cost ? 'Collect ' + fmt(c.cost - d.wallet) + ' more bananas to unlock' : FREE_CAST && !d.owned.includes(id) ? 'Unlocked for testing' : '');
+      setText(el.charNeed, !owned && d.wallet < c.cost ? 'Collect ' + fmt(c.cost - d.wallet) + ' more bananas to unlock'
+        : c.sea ? 'High Tide only' + (free ? ' · free for testing' : '') : free ? 'Free for testing' : '');
     },
     charGo() {
-      const id = CHAR_ORDER[browseAt], c = CHARS[id], d = Save.data;
-      if (d.char === id) return;
+      const id = cast()[browseAt], c = CHARS[id], d = Save.data;
+      if (runner() === id) return;
       if (!owns(id)) {
         if (d.wallet < c.cost) return;
         d.wallet -= c.cost; d.owned.push(id); Save.fixCast();
         Sound.sfx.best(); monkey.setExpr('happy', 1.4); monkey.bounce(1.4);
         fx.sparkle(Player.wx, 1.1, Player.wz, 26, 0xfff3a8);
       } else Sound.sfx.power();
-      d.char = id; Save.store(); api.renderChars();
+      // The seal and the orca are picked for High Tide alone. Anyone else becomes the runner everywhere (and, picked in High Tide, takes over there too).
+      if (c.sea) d.seaChar = id; else { d.char = id; if (atSea()) d.seaChar = null; }
+      Save.store(); api.renderChars();
     },
-    closeChars() { Roster.use(Save.data.char); monkey.holdBanana(true); api.refreshTitle(); api.setState('title'); Cam.to(Cam.preset('title'), 6); },
+    closeChars() { Roster.use(runner()); monkey.holdBanana(true); api.refreshTitle(); api.setState('title'); Cam.to(Cam.preset('title'), 6); },
     stopCount() { countTimers.forEach(clearTimeout); countTimers = []; el.countNum.classList.remove('on'); },
     countdown(done) {
       api.stopCount();

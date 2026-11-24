@@ -14,9 +14,14 @@ const CHARS = {
     pal: { body: 0xa6cef1, face: 0xc8e3f9, ear: 0xc8e3f9, top: 0x86b8e6, top2: 0x86b8e6, paw: 0x8dbde9, ink: 0x2d4a66 } },
   dino: { name: 'Herbie', blurb: 'Herbivore. Mostly bananas.', cost: 1500, kind: 'dino', marks: true, stiffTop: true,
     pal: { body: 0xf6efa8, face: 0xf6efa8, ear: 0x86c5ae, top: 0x86c5ae, top2: 0x6db59c, paw: 0xeee18c, ink: 0x4d4722 } },
+  // sea: true = lives in High Tide and nowhere else. These two swim (SeaCharacter, further down) instead of running.
+  seal: { name: 'Sealie', blurb: 'Naps anywhere, swims everywhere', cost: 800, kind: 'seal', sea: true },
+  orca: { name: 'Orkie', blurb: 'Small whale, big splash', cost: 1200, kind: 'orca', sea: true },
 };
-const CHAR_ORDER = ['monkey', 'smokey', 'pig', 'elephant', 'dino'];
-let FREE_CAST = true; // testing: everyone can be played without being bought. Set to false to put the prices back; what was really bought is kept.
+const CHAR_ORDER = ['monkey', 'smokey', 'pig', 'elephant', 'dino', 'seal', 'orca'];
+// Testing: the characters named here can be played without being bought (nothing is spent, nothing is marked as bought).
+// Empty the list to put their prices back; whatever was really bought is kept.
+let FREE_CAST = ['seal', 'orca'];
 
 // Each head builder adds its shapes and says where the eyes go.
 const HEADS = {
@@ -370,7 +375,7 @@ class Character {
 // Who is running: built on first use, one in the scene at a time. `monkey` always points at the current one.
 const Roster = {
   cache: {},
-  get(id) { return this.cache[id] || (this.cache[id] = new Character(CHARS[id] ? id : 'monkey')); },
+  get(id) { if (!CHARS[id]) id = 'monkey'; return this.cache[id] || (this.cache[id] = CHARS[id].sea ? new SeaCharacter(id) : new Character(id)); },
   use(id) {
     const c = this.get(id);
     if (monkey === c) return c;
@@ -417,7 +422,7 @@ class Boulder {
 }
 
 // ───────────────────────── sea creatures, modelled on the plush seal and the plush orca ─────────────────────────
-const SEAL = { body: 0xf3b9a2, flip: 0xe9a68d, muzzle: 0xb36b36, dark: 0x2a1a14, dot: 0x7a4322, spot: 0xe8974e };
+const SEAL = { body: 0xf8b494, flip: 0xee9d7c, muzzle: 0xb36b36, dark: 0x2a1a14, dot: 0x7a4322, spot: 0xe98a3c };
 const ORCA = { black: 0x2c3142, white: 0xf8f4ea, pupil: 0x15171d };
 MAT.inkDark = new THREE.MeshBasicMaterial({ color: 0x12141b, side: THREE.BackSide });
 
@@ -443,7 +448,7 @@ function sealGeo(asleep) {
 }
 
 // The orca, nose towards -Z, about 4 m long. part: 'body', 'tail' (the piece that beats), or 'all' in one for the ones that only glide by.
-function orcaGeo(part) {
+function orcaGeo(part, noEyes) {
   const gb = new GeoBuilder(), c = ORCA;
   if (part !== 'tail') {
     gb.add(SHAPE.sphHi, M(0, 0, -0.25, 1.75, 1.5, 3.1), c.black);                                             // one big blunt lozenge
@@ -453,7 +458,7 @@ function orcaGeo(part) {
     gb.add(SHAPE.sph, M(0, 0.74, 0.12, 0.17, 1.0, 0.66, 0.5, 0, 0), c.black);                                  // rounded fin, leaning back
     for (const sx of [-1, 1]) {
       gb.add(SHAPE.sph, M(sx * 0.726, 0.27, -0.95, 0.1, 0.5, 0.7, 0, sx * 0.3, sx * 0.46), c.white);            // the big white eye patch …
-      gb.add(SHAPE.sph, M(sx * 0.772, 0.29, -0.98, 0.06, 0.09, 0.09, 0, sx * 0.3, sx * 0.46), c.pupil);        // … with a dot of an eye in the middle
+      if (!noEyes) gb.add(SHAPE.sph, M(sx * 0.772, 0.29, -0.98, 0.06, 0.09, 0.09, 0, sx * 0.3, sx * 0.46), c.pupil); // … with a dot of an eye in the middle
       gb.add(SHAPE.sph, M(sx * 0.845, -0.1, 0.1, 0.09, 0.74, 0.42, 0.5, 0, sx * -0.12), c.white);              // white flash on the flank
       gb.add(SHAPE.sph, M(sx * 0.98, -0.52, -0.5, 0.95, 0.15, 0.52, 0, sx * -0.45, sx * -0.5), c.black);       // paddle flippers, swept back
     }
@@ -531,6 +536,7 @@ class Swimmer {
   flee(t) { if (this.fled < 0) this.fled = t; } // startled: up and away, and it carries on its rounds from there
   update(t) {
     const a = t * this.w + this.ph, c = Math.cos(a), s = Math.sin(a), o = this.obj;
+    if (this.home) o.visible = Tide.y > SEA_LIFE_Y && !(monkey && monkey.swims); // company for a runner with legs; a seal or an orca out in front needs no double behind it
     o.position.set(this.cx + c * this.rx, this.cy + Math.sin(a * 1.7 + this.ph) * this.bob, this.cz + s * this.rz);
     const vx = -s * this.rx * this.w, vz = c * this.rz * this.w;                 // heading follows the way it is going
     o.rotation.set(Math.cos(a * 1.7 + this.ph) * 0.16, Math.atan2(-vx, -vz), Math.sin(a * 2.3) * 0.14 + (this.roll ? Math.max(0, Math.sin(a * 0.5)) ** 8 * TAU : 0), 'YXZ');
@@ -538,5 +544,257 @@ class Swimmer {
       const k = clamp((t - this.fled) / 0.9, 0, 1), e = k * k * (3 - 2 * k);
       o.position.y += 7 * e; o.position.x += (this.cx < 0 ? -5 : 5) * e; o.rotation.x += 0.7 * Math.sin(k * Math.PI); // nose up on the way
     }
+  }
+}
+
+// ───────────────────────── the seal and the orca as runners ─────────────────────────
+// Sea-only characters. They swim instead of running: level in the water with the belly half a metre off the floor,
+// which is where a napping seal would trip them and a beam would catch them, so a leap and a dive are needed in exactly
+// the places a jump and a slide are. The rules and the reach are everybody's; only the stroke is their own.
+// Everything the game asks of a Character, this answers too.
+const SWIM_Y = 1.0; // how high the middle of the body rides
+
+// The plush seal again, taken apart at the tail and the shoulders so that it can swim.
+// Model space: nose towards -Z, the middle of the body at the origin. part: 'body', 'tail' (built round its hinge) or 'flip' (one front flipper, built round the shoulder; sx = which side).
+function sealSwimGeo(part, sx) {
+  const gb = new GeoBuilder(), c = SEAL;
+  if (part === 'body') {
+    gb.add(SHAPE.sphHi, M(0, 0, -0.02, 0.84, 0.8, 1.5), c.body);
+    gb.add(SHAPE.sphHi, M(0, 0.02, -0.5, 0.88, 0.82, 0.82), c.body);
+    gb.add(SHAPE.sph, M(0, -0.11, -0.845, 0.46, 0.32, 0.24), c.muzzle);
+    gb.add(SHAPE.cone4, M(0, -0.015, -0.955, 0.18, 0.12, 0.07, Math.PI, 0, 0), c.dark);
+    gb.add(SHAPE.box, M(0, -0.135, -0.96, 0.02, 0.13, 0.02), c.dark);
+    for (const k of [-1, 1]) for (const [dx, dy] of [[0.1, -0.125], [0.155, -0.085], [0.15, -0.165]]) gb.add(SHAPE.sphLo, M(k * dx, dy, -0.945 + dx * 0.22, 0.024, 0.024, 0.02), c.dot);
+    for (const [x, y, z, r] of [[0.13, 0.386, 0.14, -0.3], [-0.1, 0.365, 0.31, 0.25], [0.07, 0.325, 0.44, -0.15], [-0.15, 0.372, -0.1, 0.5]]) gb.add(SHAPE.sph, M(x, y, z, 0.15, 0.03, 0.11, 0.25, 0.4, r), c.spot); // the spots on its back are what you see of it in a run
+  } else if (part === 'tail') {
+    gb.add(taperTube([v3(0, 0, -0.07), v3(0, -0.01, 0.3), v3(0, -0.02, 0.7)], 8, 0.3, 0.14, 10), IDENT, c.body);
+    for (const k of [-1, 1]) { // hind flippers, fanned out in a V: this is the end of it you see in a run
+      gb.add(SHAPE.sph, M(k * 0.2, -0.02, 0.9, 0.32, 0.1, 0.62, 0, k * 0.5, 0), c.flip);
+      for (const j of [-1, 1]) gb.add(SHAPE.box, M(k * 0.24 + j * 0.06, 0.035, 0.98, 0.016, 0.014, 0.3, 0, k * 0.5 + j * 0.16, 0), c.muzzle);
+    }
+  } else {
+    gb.add(SHAPE.sph, M(sx * 0.28, 0, 0.08, 0.66, 0.1, 0.36, 0, sx * -0.5, 0), c.flip);
+    for (const k of [-1, 0, 1]) gb.add(SHAPE.box, M(sx * 0.35, 0.05, 0.13 + k * 0.085, 0.36, 0.014, 0.022, 0, sx * -(0.5 + k * 0.14), 0), c.muzzle);
+  }
+  return gb.build();
+}
+
+// Eyes that can change expression on a head that is not flat-fronted: each eye sits on its own little turntable, turned to face out of the head.
+// E: { x, y, z, yaw } for one eye (mirrored for the other). onWhite: the eye sits on a white patch already (the orca), so "wide" is a pinprick pupil instead.
+function seaEyes(E, r, onWhite) {
+  const eyeGeo = new THREE.SphereGeometry(r, 12, 8), barGeo = new THREE.BoxGeometry(r * 3.5, r * 0.95, r * 0.8), sets = {}, balls = [];
+  const make = (fill) => {
+    const g = new THREE.Group();
+    for (const sx of [-1, 1]) { const pv = new THREE.Group(); pv.position.set(sx * E.x, E.y, E.z); pv.rotation.y = -sx * E.yaw; fill(pv, sx); g.add(pv); }
+    return g;
+  };
+  sets.normal = make((pv, sx) => {
+    const e = new THREE.Mesh(eyeGeo, MAT.eye); e.scale.z = 0.6; pv.add(e); balls.push(e);
+    const hl = new THREE.Mesh(eyeGeo, MAT.white); hl.scale.setScalar(0.3); hl.position.set(-sx * r * 0.3, r * 0.42, -r * 0.55); pv.add(hl);
+  });
+  sets.wide = make((pv) => {
+    if (!onWhite) { const w = new THREE.Mesh(eyeGeo, MAT.white); w.scale.set(1.9, 2.1, 0.5); pv.add(w); }
+    const e = new THREE.Mesh(eyeGeo, MAT.eye); e.scale.set(onWhite ? 0.55 : 0.85, onWhite ? 0.55 : 0.85, 0.5); e.position.z = -r * 0.5; pv.add(e);
+  });
+  sets.x = make((pv) => { for (const k of [-1, 1]) { const b = new THREE.Mesh(barGeo, MAT.eye); b.position.z = -r * 0.35; b.rotation.z = k * 0.78; pv.add(b); } });
+  sets.squint = make((pv, sx) => { for (const k of [-1, 1]) { const b = new THREE.Mesh(barGeo, MAT.eye); b.scale.x = 0.8; b.position.set(0, k * r * 0.9, -r * 0.35); b.rotation.z = -sx * k * 0.55; pv.add(b); } });
+  sets.happy = make((pv) => { for (const k of [-1, 1]) { const b = new THREE.Mesh(barGeo, MAT.eye); b.scale.x = 0.7; b.position.set(k * r * 0.9, 0, -r * 0.35); b.rotation.z = -k * 0.75; pv.add(b); } });
+  return { sets, balls };
+}
+
+// Per kind: how far the plush is fattened and shortened (a runner has to fit a lane and its own hitbox), and where things attach once it has been.
+const SEA_BODY = {
+  seal: { sc: [1.12, 1.12, 1.0], tail: [0, -0.045, 0.34], shoulder: [0.403, -0.224, -0.12], eye: { x: 0.319, y: 0.19, z: -0.765, yaw: 0.7 }, eyeR: 0.048,
+    nose: [0, -0.01, -0.99], back: [0, 0.55, 0.12], strap: [0.452, 1.03, 0.98, 0, 0.12], jet: [0.17, 0.5, 0.34], head: [0, 0.1, -0.62],
+    coils: [[0.04, 0.33], [0.16, 0.285], [0.28, 0.24]], dive: -0.53, diveRoll: 0, rest: -0.55, roll: Math.PI, bubble: [1.05, 0.98, 1.42, 0.1], shadow: [0.9, 1.9] },
+  orca: { sc: [0.62, 0.62, 0.52], tail: [0, 0, 0.676], eye: { x: 0.48, y: 0.18, z: -0.51, yaw: 1.22 }, eyeR: 0.05,
+    nose: [0, -0.02, -0.936], back: [0, 0.535, -0.42], strap: [0.482, 1.06, 0.97, -0.03, -0.42], jet: [0.22, 0.49, 0.06], head: [0, 0.1, -0.6],
+    coils: [[0.04, 0.215], [0.12, 0.185], [0.2, 0.155]], dive: -0.5, diveRoll: 0.5, rest: -0.42, roll: 1.45, bubble: [1.12, 1.02, 1.42, 0.12], shadow: [1.0, 1.9] },
+};
+
+class SeaCharacter {
+  constructor(id) {
+    const spec = this.spec = CHARS[id], K = this.orca = spec.kind === 'orca', B = this.B = SEA_BODY[spec.kind], [ax, ay, az] = B.sc;
+    this.id = id; this.swims = true;
+    const root = this.root = new THREE.Group();
+    const sq = this.sq = new THREE.Group(); root.add(sq);
+    const body = this.body = new THREE.Group(); body.rotation.order = 'YXZ'; body.position.y = SWIM_Y; sq.add(body);
+    const ink = K ? MAT.inkDark : MAT.ink;
+    const part = (geo) => { geo.scale(ax, ay, az); const m = new THREE.Mesh(geo, MAT.char); m.add(new THREE.Mesh(outlineOf(geo, 0.026), ink)); return m; };
+
+    body.add(part(K ? orcaGeo('body', true) : sealSwimGeo('body')));
+    const tail = this.tail = new THREE.Group(); tail.position.set(B.tail[0], B.tail[1], B.tail[2]); body.add(tail);
+    tail.add(part(K ? orcaGeo('tail') : sealSwimGeo('tail')));
+    this.flips = [];
+    if (B.shoulder) for (const sx of [-1, 1]) { // the seal paddles; the orca's flippers are part of its body
+      const f = new THREE.Group(); f.position.set(sx * B.shoulder[0], B.shoulder[1], B.shoulder[2]); f.add(part(sealSwimGeo('flip', sx))); body.add(f); this.flips.push(f);
+    }
+
+    // a point in the head: where the bubbles come from and what the stars circle
+    const head = this.head = new THREE.Object3D(); head.position.set(B.head[0], B.head[1], B.head[2]); body.add(head);
+    const ey = seaEyes(B.eye, B.eyeR, K);
+    this.eyes = ey.sets; this.eyeballs = ey.balls;
+    for (const k in this.eyes) { this.eyes[k].visible = k === 'normal'; body.add(this.eyes[k]); }
+    this.expr = 'normal'; this.exprT = 0; this.blinkT = 2.5;
+
+    // the Golden Banana: strapped along the back in a run, balanced on the nose on the home screen
+    let gb = new GeoBuilder();
+    gb.add(GEO.banana, M(0, 0, 0, 1.05, 1.05, 1.05), 0xffffff);
+    const pack = this.pack = toonPart(gb, 0.022, MAT.gold);
+    pack.position.set(B.back[0], B.back[1], B.back[2]); pack.rotation.set(0, Math.PI / 2 - 0.18, Math.PI); // along the spine, ends down, so it hugs the curve of the back
+    body.add(pack);
+    const strap = this.strap = new THREE.Mesh(new THREE.TorusGeometry(B.strap[0], 0.026, 6, 24), new THREE.MeshToonMaterial({ color: 0x8a4b2a, gradientMap: GRAD_CHAR }));
+    strap.scale.set(B.strap[1], B.strap[2], 1); strap.position.set(0, B.strap[3], B.strap[4]);
+    body.add(strap);
+    gb = new GeoBuilder();
+    gb.add(GEO.banana, M(0, 0, 0, 1.0, 1.0, 1.0), 0xffffff);
+    const perch = this.perch = new THREE.Group(); perch.position.set(B.nose[0], B.nose[1], B.nose[2]); body.add(perch); // it rocks about the tip of the nose
+    const held = this.held = toonPart(gb, 0.022, MAT.gold);
+    held.position.set(0, 0.27, 0); perch.add(held);
+    held.visible = false;
+
+    // coconut rocket: two coconuts on the back, nozzles to the rear
+    const jet = this.jet = new THREE.Group(); jet.visible = false; body.add(jet);
+    gb = new GeoBuilder();
+    for (const sx of [-1, 1]) {
+      gb.add(SHAPE.sph, M(sx * B.jet[0], B.jet[1], B.jet[2], 0.3, 0.3, 0.36), 0x8a5a33);
+      gb.add(SHAPE.sph, M(sx * B.jet[0], B.jet[1], B.jet[2] - 0.16, 0.2, 0.2, 0.1), 0xb07a48);
+      gb.add(SHAPE.coneS, M(sx * B.jet[0], B.jet[1], B.jet[2] + 0.22, 0.2, 0.16, 0.2, -Math.PI / 2, 0, 0), 0x4a3526);
+    }
+    gb.add(SHAPE.box, M(0, B.jet[1] - 0.04, B.jet[2], B.jet[0] * 2 + 0.2, 0.07, 0.07), 0x8a4b2a);
+    jet.add(toonPart(gb, 0.022));
+    this.nozzles = [new THREE.Object3D(), new THREE.Object3D()];
+    this.nozzles[0].position.set(-B.jet[0], B.jet[1], B.jet[2] + 0.32); this.nozzles[1].position.set(B.jet[0], B.jet[1], B.jet[2] + 0.32);
+    jet.add(this.nozzles[0], this.nozzles[1]);
+
+    // super springs: bright coils round the tail
+    const coils = new THREE.Group(); coils.visible = false; tail.add(coils); this.coils = [coils];
+    const coilMat = new THREE.MeshToonMaterial({ color: 0x7ce04a, gradientMap: GRAD_CHAR, emissive: 0x1d4a08 });
+    B.coils.forEach(([z, r], i) => {
+      const geo = new THREE.TorusGeometry(r, 0.03, 6, 16), ring = new THREE.Mesh(geo, coilMat); ring.position.set(0, K ? 0.045 : -0.01, z); ring.rotation.x = i % 2 ? 0.16 : -0.16;
+      const o = new THREE.Mesh(geo, MAT.ink); o.scale.set(1.08, 1.08, 1.6); ring.add(o);
+      coils.add(ring);
+    });
+
+    // dizzy stars
+    const stars = this.stars = new THREE.Group(); stars.visible = false; root.add(stars);
+    const starGeo = new THREE.OctahedronGeometry(0.085, 0), starMat = new THREE.MeshBasicMaterial({ color: 0xffd23f });
+    for (let i = 0; i < 3; i++) {
+      const s = new THREE.Mesh(starGeo, starMat), a = (i / 3) * TAU;
+      s.position.set(Math.cos(a) * 0.42, 0, Math.sin(a) * 0.42); s.scale.set(1, 1.5, 1);
+      const o = new THREE.Mesh(starGeo, MAT.ink); o.scale.setScalar(1.3); s.add(o);
+      stars.add(s);
+    }
+
+    // bubble shield, long enough to take all of it
+    const bub = this.bubble = new THREE.Mesh(new THREE.SphereGeometry(1, 22, 14), new THREE.MeshBasicMaterial({ color: 0x9fefff, transparent: true, opacity: 0.24, depthWrite: false }));
+    bub.visible = false; bub.renderOrder = 5; root.add(bub);
+    const rim = new THREE.Mesh(bub.geometry, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.BackSide }));
+    rim.scale.setScalar(1.03); bub.add(rim);
+
+    // soft shadow on the floor below, as long as the animal (lives in the scene, not on the character)
+    this.shadow = new THREE.Mesh(new THREE.CircleGeometry(0.5, 20).rotateX(-Math.PI / 2).scale(B.shadow[0], 1, B.shadow[1]), MAT.shadow);
+    this.shadow.renderOrder = 2;
+
+    this.P = this._pose(); this.T = this._pose();
+    this.phase = 0; this.sqy = 1; this.sqv = 0; this.flat = 0;
+  }
+
+  // by: height, bp: pitch (nose up), br: roll, byaw: turn; tx/ty: tail up-down and side to side; fl: flippers raised, fa: one more than the other; hz: the banana rocking; sz: size (it poses a little smaller than it swims, to fit the screen)
+  _pose() { return { by: 0, bp: 0, br: 0, byaw: 0, tx: 0, ty: 0, fl: -0.35, fa: 0, hz: 0, sz: 1 }; }
+
+  setExpr(name, hold) {
+    if (this.expr !== name) { for (const k in this.eyes) this.eyes[k].visible = k === name; this.expr = name; }
+    this.exprT = hold || 0;
+  }
+  holdBanana(on) { this.held.visible = on; this.pack.visible = !on; this.strap.visible = !on; }
+  setJet(on) { this.jet.visible = on; }
+  setSprings(on) { for (const c of this.coils) c.visible = on; }
+  bounce(v) { this.sqy = v; this.sqv = 0; }
+  snapPose() { for (const k in this.T) this.P[k] = this.T[k]; }
+  fresh() {
+    this.root.visible = true; this.flat = 0; this.stars.visible = false; this.bubble.visible = false;
+    this.setJet(false); this.setSprings(false); this.setExpr('normal'); this.sqy = 1; this.sqv = 0;
+    this.P.br = 0; this.P.bp = 0; this.P.by = 0; // the right way up again
+  }
+
+  // st: { mode, t, time, speedK, vy, panic, lean, stumble } — the same call a Character takes
+  update(dt, st) {
+    const T = this.T, P = this.P, B = this.B, K = this.orca, t = st.time, mt = st.t || 0;
+    T.by = 0; T.bp = 0; T.br = (st.lean || 0) * 0.9; T.byaw = 0; T.tx = 0; T.ty = 0; T.fl = -0.35; T.fa = 0; T.hz = 0; T.sz = 1;
+    let k = 22;
+    switch (st.mode) {
+      case 'idle': // nose in the air like a performing seal, three-quarters on, the Golden Banana balanced on the end of it
+        T.byaw = (K ? 0.55 : 0.4) + Math.sin(t * 0.5) * 0.08; T.bp = 0.55 + Math.sin(t * 1.15) * 0.04; T.by = -0.06 + Math.sin(t * 1.6) * 0.045; T.br = Math.sin(t * 0.9) * 0.05; T.sz = 0.86;
+        T.tx = K ? Math.sin(t * 1.9) * 0.22 : 0; T.ty = K ? 0 : Math.sin(t * 1.9) * 0.3; T.fl = -0.2 + Math.sin(t * 2.3) * 0.22; T.fa = Math.sin(t * 1.15) * 0.1; T.hz = Math.sin(t * 2.3) * 0.1;
+        k = 9; break;
+      case 'scare': // a look back at what just came out of the temple
+        T.byaw = 1.05; T.bp = 0.16; T.by = 0.16; T.fl = 0.7; T.tx = K ? -0.4 : 0; T.ty = K ? 0 : -0.5;
+        k = 17; break;
+      case 'run': { // swimming: the seal sculls from side to side, the orca beats its flukes up and down
+        const hurry = st.panic ? 1.25 : 1;
+        this.phase += dt * TAU * lerp(1.7, 2.5, st.speedK || 0) * hurry;
+        const s = Math.sin(this.phase);
+        T.bp = 0.2; // nose a little up, so the camera behind sees its back and not just its tail end
+        if (K) { T.tx = s * 0.5 * hurry; T.bp += Math.sin(this.phase - 1.2) * 0.075 * hurry; T.by = Math.sin(this.phase - 0.5) * 0.04; }
+        else { T.ty = s * 0.5 * hurry; T.byaw = -Math.sin(this.phase - 0.4) * 0.11 * hurry; T.br += s * 0.035; T.by = Math.sin(this.phase * 2) * 0.02; T.fl = -0.35 + Math.cos(this.phase) * 0.14; T.fa = s * 0.12; }
+        k = 26; break;
+      }
+      case 'air': // a leap: nose up on the way up, nose down on the way back
+        T.bp = clamp(0.15 + (st.vy || 0) * 0.075, -0.6, 0.85); T.fl = 0.75; T.tx = K ? (st.vy > 0 ? 0.35 : -0.25) : 0; T.ty = K ? 0 : Math.sin(t * 16) * 0.22;
+        k = 16; break;
+      case 'slide': // a dive: flat along the floor with everything tucked in
+        T.by = B.dive; T.bp = 0.02; T.br = B.diveRoll; T.fl = -0.8; // (the orca tips on its side to get its fin under) T.tx = K ? Math.sin(t * 15) * 0.16 : 0; T.ty = K ? 0 : Math.sin(t * 15) * 0.2;
+        k = 20; break;
+      case 'fly': // coconuts lit: straight as an arrow
+        T.bp = 0.16 + Math.sin(t * 3.1) * 0.04; T.fl = 0.45; T.tx = K ? Math.sin(t * 12) * 0.18 : 0; T.ty = K ? 0 : Math.sin(t * 12) * 0.2;
+        k = 9; break;
+      case 'bonk': { // rolled over on the floor, seeing stars
+        const d = Math.exp(-mt * 2.2);
+        T.br = B.roll; T.by = B.rest; T.bp = 0.04; T.fl = 0.35 + Math.sin(mt * 16) * 0.3 * d; T.fa = Math.sin(mt * 16) * 0.2 * d; T.tx = K ? 0.25 : 0;
+        k = 11; break;
+      }
+      case 'fall': // helpless: over and over with everything flapping
+        T.br = Math.sin(mt * 6.5) * 0.9; T.bp = Math.sin(mt * 5) * 0.3 - 0.15; T.fl = 0.3 + Math.sin(mt * 31) * 0.6; T.fa = Math.sin(mt * 27) * 0.5;
+        T.tx = K ? Math.sin(mt * 27) * 0.6 : 0; T.ty = K ? 0 : Math.sin(mt * 27) * 0.7;
+        k = 24; break;
+      case 'flat':
+        T.by = B.rest; T.fl = 0.2;
+        k = 30; break;
+    }
+    if (st.stumble >= 0 && st.stumble < 1) {
+      const u = st.stumble, w = Math.sin(Math.PI * u);
+      T.bp -= 0.5 * w; T.br += Math.sin(u * 26) * 0.4 * w; T.by += 0.1 * w; T.fl = 0.4 + Math.sin(u * 26) * 0.6;
+    }
+    const a = 1 - Math.exp(-k * dt);
+    for (const key in T) P[key] += (T[key] - P[key]) * a;
+
+    this.body.position.y = SWIM_Y + P.by;
+    this.body.rotation.set(P.bp, P.byaw, P.br);
+    this.tail.rotation.set(P.tx, P.ty, 0);
+    if (this.flips.length) { this.flips[0].rotation.z = -(P.fl - P.fa); this.flips[1].rotation.z = P.fl + P.fa; }
+    this.perch.rotation.z = P.hz; this.perch.rotation.x = -P.bp; // the banana stays level while the nose tips under it
+
+    // squash & stretch on a spring, about the middle of the body
+    this.sqv += (-340 * (this.sqy - 1) - 19 * this.sqv) * dt;
+    this.sqy = clamp(this.sqy + this.sqv * dt, 0.5, 1.5);
+    if (this.flat > 0) { const f = this.flat; this.body.scale.set(lerp(1, 1.4, f), lerp(1, 0.14, f), lerp(1, 1.4, f)); }
+    else { const w = P.sz / Math.sqrt(this.sqy); this.body.scale.set(w, this.sqy * P.sz, w); }
+
+    // blinking and timed expressions
+    if (this.exprT > 0) { this.exprT -= dt; if (this.exprT <= 0) this.setExpr('normal'); }
+    this.blinkT -= dt;
+    const blink = this.blinkT < 0.1;
+    if (this.blinkT < 0) this.blinkT = 2.2 + Math.random() * 2.6;
+    for (const e of this.eyeballs) e.scale.y = blink ? 0.12 : 1;
+
+    if (this.stars.visible) { // circle wherever the head has ended up
+      this.root.updateMatrixWorld(true);
+      this.head.getWorldPosition(_v); this.root.worldToLocal(_v);
+      this.stars.position.set(_v.x, _v.y + 0.55, _v.z);
+      this.stars.rotation.y += dt * 4.5;
+    }
+    if (this.bubble.visible) { const p = 1 + Math.sin(t * 5) * 0.025; this.bubble.position.set(0, SWIM_Y + P.by, B.bubble[3]); this.bubble.scale.set(B.bubble[0] * p, B.bubble[1] * p, B.bubble[2] * p); }
+    this.shadow.rotation.y = this.root.rotation.y; // the shadow lies the way the animal is heading
   }
 }
