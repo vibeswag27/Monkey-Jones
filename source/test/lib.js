@@ -19,7 +19,10 @@ async function open({ w = 390, h = 760, manual = true, dpr = 2, touch = true } =
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 5).join('\n')));
-  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(m.type().toUpperCase() + ' ' + m.text()); });
+  page.on('console', (m) => {
+    if (/GPU stall due to ReadPixels/.test(m.text())) return; // the software renderer grumbling about speed, nothing to do with the game
+    if (m.type() === 'error' || m.type() === 'warning') errors.push(m.type().toUpperCase() + ' ' + m.text());
+  });
   await page.route('**/three.min.js', (r) => r.fulfill({ path: path.join(ROOT, 'node_modules/three/build/three.min.js'), contentType: 'application/javascript' }));
   await page.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ body: FONTCSS, contentType: 'text/css' }));
   await page.route('https://fonts.gstatic.com/**', (r) => { const f = FONTS[r.request().url().split('/').pop()]; if (f) r.fulfill({ path: path.join(ROOT, f), contentType: 'font/woff2' }); else r.abort(); });

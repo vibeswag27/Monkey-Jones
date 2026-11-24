@@ -60,6 +60,7 @@ function genSegment(seg, W) {
   seg.len = seg.floorStart + seg.nRows * ROW + HJ;
 
   const O = seg.obstacles, B = seg.bananas;
+  const end = seg.len - HJ - Math.max(11, v * 0.8);          // nothing is laid beyond here: the run-up to the corner is kept clear
   const rowS = (k) => seg.floorStart + k * ROW;
   const rowOf = (s) => Math.ceil((s - seg.floorStart) / ROW - 1e-6);
   const others = (l) => [0, 1, 2].filter((i) => i !== l);
@@ -78,6 +79,8 @@ function genSegment(seg, W) {
       i = j + 1;
     }
   };
+  const addDeck = (lane, s0, s1, ramp) => { const x = laneX(lane), d = { lane, s0, s1, h: DECK_H, ramp, r0: ramp ? s0 - RAMP_LEN : s0, x0: x - LANE_W / 2, x1: x + LANE_W / 2 }; seg.decks.push(d); return d; };
+  const landing = 0.75 * v;                                  // clear ground kept after anything he may come down from
   const nana = (s, lane, y) => B.push({ s, x: laneX(lane), y: y === undefined ? 0.62 : y, got: false, pull: -1, ph: rng.f() * TAU, wx: 0, wz: 0 });
   const line = (s0, s1, lane, y) => { for (let s = s0; s <= s1 + 0.01; s += 1.9) nana(s, lane, y); };
   const arc = (mid, lane) => {
@@ -132,13 +135,41 @@ function genSegment(seg, W) {
       if (rng.chance(0.5)) { addLog(s, c, c); arc(s, b); } else line(s - 5.7, s + 3.8, c);
       return 1.3;
     },
+    // A raised walkway with steps up to it. Up top: a clear run and a row of bananas. Down below: things to hop over, and now and then a totem.
+    deck(s) {
+      const len = Math.min(clamp(v * rng.range(1.3, 2.1), 14, 46), end - s - RAMP_LEN - landing);
+      if (len < 12) return -1;
+      const lane = rng.int(0, 2), d = addDeck(lane, s + RAMP_LEN, s + RAMP_LEN + len, true), low = others(lane);
+      for (let i = 1; i < 3; i++) nana(d.r0 + i * 1.9, lane, 0.62 + (DECK_H * i * 1.9) / RAMP_LEN);
+      line(d.s0 + 0.2, d.s1 - 1, lane, DECK_H + 0.62);
+      const gapLow = Math.max(12, v * 1.05 * tight);
+      for (let r = d.s0 + rng.range(1, 4); r < d.s1 - 0.4 * v - 1.2; r += gapLow * rng.range(1, 1.3)) {
+        const a = rng.pick(low), b = low[0] === a ? low[1] : low[0];
+        const kind = rng.weighted([[3, 'rubble'], [3, 'log'], [2, 'both'], [lane !== 1 && prog >= 1 ? 2 : 0, 'totem']]); // a totem only where there is a lane beside it to dodge into
+        if (kind === 'rubble') addRubble(r, a);
+        else if (kind === 'log') addLog(r, a, a);
+        else if (kind === 'both') { addLog(r, a, a); if (rng.chance(0.5)) addLog(r, b, b); else addRubble(r, b); }
+        else { addPillar(r, a); if (rng.chance(0.4)) addLog(r, b, b); }
+      }
+      return RAMP_LEN + len + landing;
+    },
+    // A block of masonry with no way up it (short of springs, a shield or a bounce): something to go round, now and then two abreast.
+    wall(s) {
+      const len = Math.min(clamp(v * rng.range(0.7, 1.2), 9, 30), end - s - landing);
+      if (len < 8) return -1;
+      const lane = rng.int(0, 2), rest = others(lane), two = prog >= 2 && rng.chance(0.35), open = two ? rest[rng.int(0, 1)] : rng.pick(rest);
+      for (const l of two ? others(open) : [lane]) { addDeck(l, s, s + len, false); line(s + 1, s + len - 1, l, DECK_H + 0.62); }
+      line(s - 7.6, s + 1.9, open);
+      return len + landing;
+    },
     bananas(s) {
       let lane = rng.int(0, 2), ss = s;
       for (let i = 0; i < 3; i++) { line(ss, ss + 5.7, lane); ss += 7.6; lane = clamp(lane + rng.pick([-1, 1]), 0, 2); }
       return ss - s - 1.9;
     },
   };
-  const need = { pillars1: 1.3, pillars2: 1.3, log: 1, beam: 1, beamPillar: 1.3, gap: 5 * ROW, narrow: 8 * ROW, zig: dZig + 1.3, logBeam: dLogBeam + 1, beamLog: dBeamLog + 1, rubble: 1.2, mixed: 1.3, bananas: 21 };
+  const need = { pillars1: 1.3, pillars2: 1.3, log: 1, beam: 1, beamPillar: 1.3, gap: 5 * ROW, narrow: 8 * ROW, zig: dZig + 1.3, logBeam: dLogBeam + 1, beamLog: dBeamLog + 1, rubble: 1.2, mixed: 1.3, bananas: 21,
+    deck: RAMP_LEN + 12 + landing, wall: 8 + landing };
 
   if (tutorial) { // a gentle opening that teaches one move at a time
     line(7.6, 22.8, 1);
@@ -149,7 +180,6 @@ function genSegment(seg, W) {
   } else {
     let s = seg.first ? 30 : seg.floorStart + Math.max(11, v * 0.95);
     if (seg.first) line(7.6, 19, 1);
-    const end = seg.len - HJ - Math.max(11, v * 0.8);
     const tGap = levelGap(L);
     const hop = seg.sea ? 1.5 : 1; // under water there is more to hop over (giant clams) and a little less of everything else
     let last = '';
@@ -159,6 +189,7 @@ function genSegment(seg, W) {
         [3, 'pillars1'], [prog >= 0.5 ? 2.3 : 0.7, 'pillars2'], [3 * hop, 'log'], [2.5, 'beam'], [1 / hard, 'bananas'],
         [on(0.5, 2.3), 'gap'], [on(0.75, 1.6), 'rubble'], [on(1, 1.6 * hard * hop), 'mixed'], [on(1.75, 1.3 * hard), 'beamPillar'],
         [on(2, 1.8 * hard), 'narrow'], [on(2.25, 1.8 * hard), 'zig'], [on(2.75, 1.5 * hard * hop), 'logBeam'], [on(2.75, 1.3 * hard * hop), 'beamLog'],
+        [on(0.25, 2.6), 'deck'], [on(1, 1.1 * hard), 'wall'],
       ];
       let name = rng.weighted(table);
       if (name === last) name = rng.weighted(table);
@@ -319,6 +350,8 @@ function buildSegment(seg, W) {
     addTorch(gb, glow, sd * (HJ + 0.3), 2.66, zf);
   }
   addTower(gb, glow, rng, 0, zf - 4.4);
+
+  for (const d of seg.decks) addDeckMesh(gb, ol, glow, rng, d, sea); // raised walkways are part of the ground: nothing smashes one
 
   // obstacles (kept in their own meshes so a shield can smash one)
   for (const o of seg.obstacles) {

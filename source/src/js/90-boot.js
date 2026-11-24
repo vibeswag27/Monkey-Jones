@@ -16,6 +16,13 @@ const Bot = {
       if (h.s1 < from || h.s0 > to || !(x > h.x0 && x < h.x1)) continue;
       see(h.s1 - h.s0 <= v * AIR_T * 0.78 ? 'jump' : 'block', h.s0, (h.s0 + h.s1) / 2);
     }
+    // Raised walkways. In his own lane, steps ahead are just more path; a face with no steps is a wall.
+    // In another lane, the question is whether its side would be in the way while he crosses, and after that whether a face comes up.
+    if (lane !== P.lane && seg.deckWall(li, P.s - 0.4, P.s + v * 0.13 + 0.6, P.y)) see('block', P.s, P.s);
+    for (const d of seg.decks) {
+      if (d.lane !== li || d.ramp || d.s1 < from || d.s0 > to || d.s0 < P.s - 0.3) continue;
+      if (d.h > P.y + STEP_UP) see('block', d.s0, d.s0);
+    }
     return best;
   },
   think() {
@@ -39,6 +46,13 @@ const Bot = {
       else if (free(P.lane - 2) && clearNow(P.lane - 1)) go = -1;
       else if (free(P.lane + 2) && clearNow(P.lane + 1)) go = 1;
       if (go) Game.input(go < 0 ? 'left' : 'right');
+    }
+    // steps up in the next lane are worth a detour (he decides once per flight, and goes for most of them)
+    if (P.grounded && P.y < 0.1 && !(mine && mine.kind === 'block')) for (const d of seg.decks) {
+      if (!d.ramp || Math.abs(d.lane - 1 - P.lane) !== 1 || d.r0 < s + v * 0.3 || d.r0 > s + far) continue;
+      if (d.fancy === undefined) d.fancy = Math.random() < 0.65;
+      const h2 = d.fancy && this.hazard(d.lane - 1, s - 1.3, d.r0);
+      if (d.fancy && !h2) { Game.input(d.lane - 1 < P.lane ? 'left' : 'right'); break; }
     }
     const h = this.hazard(P.lane, s - 0.4, s + far);
     if (!h) return;
@@ -111,7 +125,9 @@ function boot(hot) {
   requestAnimationFrame(frame);
 
   // testing hooks
-  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get shark() { return shark; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); } };
+  window.__mj = { Game, Player, Cam, Bot, Save, UI, Sound, Tide, Seg, MAT, seaGeo, cast: { get free() { return FREE_CAST.slice(); }, set free(v) { FREE_CAST = Array.isArray(v) ? v.slice() : []; Save.fixCast(); } }, runner, get world() { return world; }, get sky() { return sky; }, get monkey() { return monkey; }, get shark() { return shark; }, get boulder() { return boulder; }, get camera() { return camera; }, get scene() { return scene; }, render() { renderer.render(scene, camera); },
+    // lay out (but do not build) a stretch at a given depth of the run, for the generator's tests
+    gen(depth, seed) { const p = new Seg(null, null); p.len = 60; p.depth = depth - 1; const s = new Seg(p, 'R'); genSegment(s, { rng: makeRng(seed >>> 0), tutorial: false, nextPickupAt: 0 }); return s; } };
 }
 
 try {
