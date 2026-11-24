@@ -6,7 +6,7 @@ const UI = (() => {
   for (const id of ['score', 'mult', 'level', 'bananas', 'nanaChip', 'powers', 'hint', 'hintIcon', 'hintText', 'toast', 'levelUp', 'levelNum', 'levelName', 'best', 'wallet', 'how', 'countNum', 'wipe', 'danger', 'sea', 'plunge',
     'overTitle', 'overSub', 'newBest', 'oScore', 'oDist', 'oLevel', 'oNanas', 'oBest', 'btnRun', 'btnPause', 'btnResume', 'btnRestart', 'btnHome', 'btnHome2', 'btnAgain',
     'btnMusic', 'btnSfx', 'btnMusic2', 'btnSfx2', 'fatalMsg', 'btnShop', 'btnShop2', 'btnShopDone', 'shopList', 'shopWallet',
-    'btnChars', 'btnPrev', 'btnNext', 'btnCharGo', 'btnCharDone', 'charName', 'charBlurb', 'charDots', 'charWallet', 'charNeed']) el[id] = $(id);
+    'btnChars', 'btnPrev', 'btnNext', 'btnCharGo', 'btnCharDone', 'charName', 'charBlurb', 'charDots', 'charWallet', 'charNeed', 'mapRuins', 'mapTide']) el[id] = $(id);
   const NANA = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFD23F" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/></svg>';
   const touch = !!((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window);
   const last = { score: -1, nanas: -1, mult: -1, level: -1, danger: false, sea: false, popAt: 0 };
@@ -54,6 +54,7 @@ const UI = (() => {
     refreshTitle() {
       el.best.textContent = fmt(Save.data.best); el.wallet.textContent = fmt(Save.data.wallet);
       setText(el.how, touch ? 'Swipe to dodge, jump and slide' : 'Arrow keys to dodge, jump and slide');
+      el.mapRuins.setAttribute('aria-checked', String(Save.data.map !== 'tide')); el.mapTide.setAttribute('aria-checked', String(Save.data.map === 'tide'));
       api.syncToggles();
     },
     syncToggles() {
@@ -89,7 +90,7 @@ const UI = (() => {
     // A new level: its number, and what kind of place it is.
     levelUp(n) {
       setText(el.levelNum, 'Level ' + n); el.levelName.textContent = levelName(n);
-      el.levelUp.classList.toggle('sea', isSea(n));
+      el.levelUp.classList.toggle('sea', atSea());
       replay(el.levelUp);
     },
     sea(on) { if (on !== last.sea) { last.sea = on; el.sea.classList.toggle('on', on); } }, // the edges of the screen darken under water
@@ -101,6 +102,12 @@ const UI = (() => {
       el.oScore.textContent = fmt(score); el.oDist.textContent = fmt(run.dist) + ' m'; el.oLevel.textContent = run.level; el.oNanas.textContent = fmt(run.nanas); el.oBest.textContent = fmt(Save.data.best);
       api.setState('over');
       setTimeout(() => { if (stage.dataset.state === 'over') { try { el.btnAgain.focus({ preventScroll: true }); } catch (e) { /* ignore */ } } }, 300);
+    },
+    // Choosing where to run: the home screen is rebuilt behind a quick wipe, so it shows the place you picked.
+    pickMap(id) {
+      if (!MAPS[id] || Save.data.map === id || Game.state !== 'title') return;
+      Save.data.map = id; Save.store();
+      api.wipe(() => Game.toTitle());
     },
     // Upgrade shop: bananas buy the next level of a power-up.
     openShop() { api.renderShop(); api.setState('shop'); },
@@ -127,20 +134,20 @@ const UI = (() => {
     openChars() { browseAt = Math.max(0, CHAR_ORDER.indexOf(Save.data.char)); api.setState('chars'); api.renderChars(); Cam.to(Cam.preset('chars'), 6); },
     browse(d) { const n = CHAR_ORDER.length; browseAt = (browseAt + d + n) % n; Sound.sfx.lane(); api.renderChars(); },
     renderChars() {
-      const id = CHAR_ORDER[browseAt], c = CHARS[id], d = Save.data, owned = d.owned.includes(id), b = el.btnCharGo;
+      const id = CHAR_ORDER[browseAt], c = CHARS[id], d = Save.data, owned = owns(id), b = el.btnCharGo;
       if (monkey.id !== id) { Roster.use(id); monkey.holdBanana(true); monkey.bounce(1.18); }
       setText(el.charName, c.name); setText(el.charBlurb, c.blurb);
       el.charWallet.textContent = fmt(d.wallet);
-      el.charDots.innerHTML = CHAR_ORDER.map((k, i) => '<i class="' + (i === browseAt ? 'on' : '') + (d.owned.includes(k) ? '' : ' locked') + '"></i>').join('');
+      el.charDots.innerHTML = CHAR_ORDER.map((k, i) => '<i class="' + (i === browseAt ? 'on' : '') + (owns(k) ? '' : ' locked') + '"></i>').join('');
       if (d.char === id) { b.textContent = 'Selected'; b.disabled = true; }
       else if (owned) { b.textContent = 'Play as ' + c.name; b.disabled = false; }
       else { b.innerHTML = 'Unlock ' + NANA + fmt(c.cost); b.disabled = d.wallet < c.cost; }
-      setText(el.charNeed, !owned && d.wallet < c.cost ? 'Collect ' + fmt(c.cost - d.wallet) + ' more bananas to unlock' : '');
+      setText(el.charNeed, !owned && d.wallet < c.cost ? 'Collect ' + fmt(c.cost - d.wallet) + ' more bananas to unlock' : FREE_CAST && !d.owned.includes(id) ? 'Unlocked for testing' : '');
     },
     charGo() {
       const id = CHAR_ORDER[browseAt], c = CHARS[id], d = Save.data;
       if (d.char === id) return;
-      if (!d.owned.includes(id)) {
+      if (!owns(id)) {
         if (d.wallet < c.cost) return;
         d.wallet -= c.cost; d.owned.push(id); Save.fixCast();
         Sound.sfx.best(); monkey.setExpr('happy', 1.4); monkey.bounce(1.4);
@@ -174,6 +181,7 @@ const UI = (() => {
       press(el.btnShop2, () => api.wipe(() => { Game.toTitle(); api.openShop(); }));
       press(el.btnShopDone, () => { api.refreshTitle(); api.setState('title'); });
       press(el.btnChars, () => api.openChars());
+      press(el.mapRuins, () => api.pickMap('ruins')); press(el.mapTide, () => api.pickMap('tide'));
       press(el.btnCharDone, () => api.closeChars());
       el.btnPrev.addEventListener('click', () => { Sound.unlock(); api.browse(-1); });
       el.btnNext.addEventListener('click', () => { Sound.unlock(); api.browse(1); });
@@ -221,6 +229,11 @@ const UI = (() => {
           if (st === 'title') { Game.startIntro(false); e.preventDefault(); return; }
           if (st === 'over') { api.wipe(() => Game.restart()); e.preventDefault(); return; }
           if (st === 'pause') { Game.resume(); e.preventDefault(); return; }
+        }
+        if (st === 'title' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { // the levels sit side by side on the home screen
+          const to = MAP_ORDER[MAP_ORDER.indexOf(Save.data.map) + (e.code === 'ArrowLeft' ? -1 : 1)];
+          if (to) api.pickMap(to);
+          e.preventDefault(); return;
         }
         const a = KEYS[e.code];
         if (a && (st === 'run' || st === 'intro')) { Game.input(a); e.preventDefault(); }

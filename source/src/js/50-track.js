@@ -15,7 +15,7 @@ class Seg {
       this.ox = parent.ox + d.fx * parent.len; this.oz = parent.oz + d.fz * parent.len;
       this.dist0 = parent.dist0 + parent.len; this.first = false; this.depth = parent.depth + 1;
     }
-    this.level = levelOf(this.depth); this.sea = isSea(this.level);
+    this.level = levelOf(this.depth); this.sea = atSea();
     this.dir = DIRS[this.heading]; this.yaw = yawOf(this.heading);
     this.obstacles = []; this.holes = []; this.holeCells = new Set(); this.bananas = []; this.pickups = [];
     this.kids = { L: null, R: null };
@@ -352,6 +352,10 @@ function buildSegment(seg, W) {
       let sc = rng.range(d0 + 10, d1 - 10);
       for (let i = 0; i < 6 && arches.some((a) => Math.abs(a - sc) < 11); i++) sc = rng.range(d0 + 10, d1 - 10); // not through a gateway
       seg.critters.push(new Swimmer('orca', { cx: 0, cy: rng.range(6.4, 7.3), cz: -sc, rx: rng.range(17, 24), rz: rng.range(4, 6), w: rng.range(0.34, 0.46) * (rng.chance(0.5) ? 1 : -1), ph: rng.f() * TAU, bob: 0.6 }));
+    }
+    if (seg.first) { // where the home screen looks: a seal circling just behind him (it bolts when the chase begins), and a school of fish across the temple doorway
+      seg.critters.push(new Swimmer('seal', { home: true, cx: -1.9, cy: 2.3, cz: 5.2, rx: 1.4, rz: 1.1, w: -0.8, ph: 2.2, bob: 0.25, size: 0.95, roll: true }));
+      seg.critters.push(new Swimmer('fish', { cx: 1.2, cy: 2.7, cz: -seg.floorStart - 5, rx: 2.6, rz: 1.5, w: 0.5, ph: rng.f() * TAU, bob: 0.4, size: 1.25 }));
     }
     const far = posts.filter((p) => Math.abs(p.x) > 7).slice(0, 3);
     for (const p of far) seg.critters.push(new Swimmer('seal', { cx: p.x, cy: clamp(p.top - 1, 1.6, 4.2), cz: -p.s, rx: 2.5, rz: 2.5, w: rng.range(0.8, 1.15) * (rng.chance(0.5) ? 1 : -1), ph: rng.f() * TAU, bob: 0.45, size: rng.range(0.85, 1.05), roll: rng.chance(0.5) }));

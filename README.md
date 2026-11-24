@@ -26,8 +26,18 @@ The scripts in `source/test/` drive the game in headless Chrome with Playwright.
 
 ## How the game is put together
 
-- **Levels.** A level is four stretches of track; you go up one at a corner. Each level runs 10 % faster than the last and leaves 7 % less room between obstacles, so the difficulty compounds (the numbers are at the top of `src/js/00-util.js`). The level is also the score multiplier, up to ×10.
-- **High Tide.** Levels 2, 5, 8, … are under water. The tide starts to rise one stretch early and drains after the level. Down there the logs are napping seals, the boulder that chases you is an orca, and the scenery is reef (`Tide` in `70-game.js`, the sea builders in `40-scenery.js`, the seal and orca in `30-characters.js`).
+- **Where you run.** The home screen offers two levels, Jungle Ruins and High Tide, and remembers the last one picked (`MAPS` in `src/js/00-util.js`, saved as `map`). The whole game is rebuilt for the one chosen: `Game.setScene` runs before the track is made.
+- **High Tide.** The same ruins, deep under water for the whole run. The logs are napping seals, the boulder that chases you is an orca, and the scenery is reef (`Tide` in `70-game.js`, the sea builders in `40-scenery.js`, the seal and orca in `30-characters.js`). On its home screen a seal circles behind the runner and bolts when the chase begins.
+- **Getting harder.** Inside a run, a level is four stretches of track and you go up one at a corner. Each runs 10 % faster than the last and leaves 7 % less room between obstacles, so the difficulty compounds (the numbers are at the top of `00-util.js`). The level number is also the score multiplier, up to ×10, and the time of day moves on with it.
 - **Corners.** You come out of a turn in the lane you went in on (`Player.tryTurn`).
+- **Characters unlocked for testing.** `FREE_CAST` at the top of `30-characters.js` is `true`, so every character can be played without buying it; nothing is spent or recorded as bought. Set it to `false` to put the prices back: whatever was really bought is still there, and a runner that was only borrowed goes back to Monkey Jones.
 
-Tests worth running after a change to any of these: `test/turn.js` (lanes through corners), `test/levels.js` (the autopilot plays every level to prove each layout can be passed), `test/states.js` (the tide never leaks into menus or a new run) and `test/sea.js` (contact sheets of the High Tide level in `shots/`).
+Tests worth running after a change to any of these (add `MJ_MAP=tide` in front to run one in High Tide):
+
+- `test/states.js`: the two levels on the home screen, pressed with real taps on three screen sizes; nothing of one leaks into the other.
+- `test/levels.js 1 20 6 1600 tide` (or `ruins`): the autopilot plays every level to prove each layout can be passed.
+- `test/turn.js`: lanes through corners.
+- `test/final.js`: the characters, free for testing and with the prices back; everyone plays both levels.
+- `test/tutorial.js`: a first-ever run and its hints, in both levels.
+- `test/homeseal.js`: the home-screen seal keeps clear of the orca when a run starts.
+- `test/sea.js`, `test/home.js`, `test/charshot.js`: pictures in `shots/` for looking at.

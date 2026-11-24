@@ -4,11 +4,12 @@ const _look = new THREE.Vector3(), _nose = new THREE.Vector3();
 const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* not available */ } };
 
 const Save = {
-  data: { best: 0, wallet: 0, music: true, sfx: true, runs: 0, up: {}, char: 'monkey', owned: ['monkey'] },
+  data: { best: 0, wallet: 0, music: true, sfx: true, runs: 0, up: {}, char: 'monkey', owned: ['monkey'], map: 'ruins' },
   fixCast(more) { // Monkey Jones is always unlocked; the chosen runner must be one you own
     const d = this.data, have = Array.isArray(d.owned) ? d.owned : [], extra = Array.isArray(more) ? more : [];
     d.owned = CHAR_ORDER.filter((k) => k === 'monkey' || have.includes(k) || extra.includes(k));
-    if (!d.owned.includes(d.char)) d.char = 'monkey';
+    if (!owns(d.char)) d.char = 'monkey';
+    if (!MAPS[d.map]) d.map = 'ruins';
   },
   fixLevels(more) { // every power-up has a level from 1 to 6
     const up = this.data.up && typeof this.data.up === 'object' ? this.data.up : {}, out = {};
@@ -19,7 +20,8 @@ const Save = {
     try { const raw = localStorage.getItem('monkeyjones.v1'); if (raw) Object.assign(this.data, JSON.parse(raw)); } catch (e) { /* storage unavailable */ }
     this.fixLevels(extra && extra.save && extra.save.up);
     this.fixCast(extra && extra.save && extra.save.owned);
-    if (extra && extra.save && this.data.owned.includes(extra.save.char)) this.data.char = extra.save.char;
+    if (extra && extra.save && owns(extra.save.char)) this.data.char = extra.save.char;
+    if (extra && extra.save && MAPS[extra.save.map]) this.data.map = extra.save.map;
     if (extra && typeof extra === 'object' && extra.save) {
       const s = extra.save;
       this.data.best = Math.max(this.data.best, s.best || 0); this.data.wallet = Math.max(this.data.wallet, s.wallet || 0);
@@ -32,13 +34,14 @@ const Save = {
 };
 
 const powerTime = (k) => POWERS[k].t[Save.data.up[k] - 1];
+const owns = (id) => !!CHARS[id] && (FREE_CAST || Save.data.owned.includes(id)); // may this character be played?
 
 // The tide. At 0 the lagoon lies far below the path; at 1 the ruins are deep under water.
 const Tide = {
   u: 0, aim: 0, y: WATER_Y, sub: 0, wet: false, under: false,
-  reset() { this.u = 0; this.aim = 0; this.y = WATER_Y; this.sub = 0; this.wet = false; this.under = false; },
-  // The water starts to rise one stretch before a High Tide level, and drains away once you are past the level.
-  follow(seg) { const a = seg.sea || isSea(levelOf(seg.depth + 1)) ? 1 : 0, turned = a !== this.aim; this.aim = a; return turned; },
+  // High Tide is a level of its own, so the water is set once: in for the whole run, or out for the whole run.
+  // (Change `aim` during a run and it will still rise or drain by itself, with everything that goes with it.)
+  flood(on) { this.u = this.aim = on ? 1 : 0; this.y = this.height(this.u); this.sub = on ? 1 : 0; this.wet = this.under = !!on; },
   height(u) { // fast up to the path, slow enough across it to watch the flood, then away overhead
     if (u <= 0) return WATER_Y;
     if (u < 0.34) { const k = u / 0.34; return WATER_Y + (-0.5 - WATER_Y) * (1.345 * k - 0.345 * k * k); }
@@ -260,7 +263,7 @@ const HINTS = [
 
 const Game = {
   state: 'title', time: 0, run: null, death: null, introT: 0, introLen: 1.75, quick: false,
-  bGap: 15, bPos: new THREE.Vector3(), bSnap: true, bYaw: 0, camFrom: null, camTo: null, bS0: -31, scared: false, hintOn: -1, skyP: 0, seaK: 0, bubT: 0,
+  bGap: 15, bPos: new THREE.Vector3(), bSnap: true, bYaw: 0, camFrom: null, camTo: null, bS0: -31, scared: false, hintOn: -1, skyP: 0, seaK: 0, bubT: 0, homeK: 0,
 
   blankRun() {
     return { dist: 0, score: 0, nanas: 0, mult: 1, level: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
@@ -271,13 +274,13 @@ const Game = {
   // ── screens ──
   toTitle() {
     this.state = 'title'; this.run = this.blankRun(); this.death = null;
+    this.homeK = 1; this.setScene();
     world.reset((Math.random() * 4294967295) >>> 0, Save.data.runs < 2);
     Player.reset(world.cur);
     Roster.use(Save.data.char); monkey.fresh(); Sound.jet(0);
     monkey.holdBanana(true);
     boulder.group.visible = false; this.bGap = 15;
     Cam.lookAt = null; Cam.fovKick = 0; Cam.snap(Cam.preset('title'));
-    this.dryLand();
     Sound.muffle(true); Sound.rumble(0);
     UI.setState('title'); UI.refreshTitle(); UI.hint(null); UI.danger(false);
     this.frameTitle(0, true);
@@ -287,29 +290,33 @@ const Game = {
     Roster.use(Save.data.char); // in case the character screen was showing someone else
     this.run = this.blankRun(); this.death = null;
     this.run.level = world.cur.level; this.run.mult = Math.min(10, this.run.level);
-    this.skyP = landIndex(this.run.level); Tide.follow(world.cur);
+    this.skyP = this.run.level - 1;
     this.state = 'intro'; this.quick = !!quick; this.introT = 0; this.introLen = quick ? 1.0 : 1.8; this.scared = false; this.hintOn = -1;
     monkey.holdBanana(false); monkey.setExpr('normal');
     boulder.group.visible = true; this.bS0 = quick ? -15 : -31; this.bGap = Player.s - this.bS0; this.bSnap = true;
     this.camFrom = quick ? Object.assign(Cam.preset('run'), { a: 1.15, dist: 5.2, height: 2.4 }) : Object.assign({}, Cam.c);
     this.camTo = Cam.preset('run');
     Cam.snap(this.camFrom);
-    Sound.startMusic(); Sound.muffle(false); Sound.sfx.rumbleStart();
+    Sound.startMusic(); Sound.muffle(false); if (Tide.wet) Sound.sfx.orca(); else Sound.sfx.rumbleStart();
+    for (const c of world.cur.critters || []) if (c.home) c.flee(this.time); // the seal by the door knows what is coming out of it
     UI.setState('intro'); UI.hud(this.run, true);
     if (!quick) fx.sparkle(Player.wx, 1.6, Player.wz, 8, 0xffe45c);
   },
   restart() { // straight back into a fresh run
+    this.homeK = 0; this.setScene();
     world.reset((Math.random() * 4294967295) >>> 0, Save.data.runs < 2);
     Player.reset(world.cur);
     Roster.use(Save.data.char); monkey.fresh(); Sound.jet(0);
-    Cam.lookAt = null; Cam.fovKick = 0; this.dryLand(); UI.hint(null); UI.danger(false);
+    Cam.lookAt = null; Cam.fovKick = 0; UI.hint(null); UI.danger(false);
     this.state = 'title';
     this.startIntro(true);
   },
-  // Back above water in the morning light: the state every run starts from.
-  dryLand() {
-    this.skyP = 0; this.seaK = 0; Tide.reset(); sky.setLook(0, 0); fx.clear();
-    orca.group.visible = false; Sound.sea(false); UI.sea(false);
+  // Which level is being played, and so whether everything is under water. Called before the track is built.
+  setScene() {
+    MAP = MAPS[Save.data.map] ? Save.data.map : 'ruins';
+    const sea = atSea();
+    this.skyP = 0; this.seaK = sea ? 1 : 0; Tide.flood(sea); sky.setLook(0, Tide.sub, this.homeK); fx.clear();
+    orca.group.visible = false; Sound.sea(sea); UI.sea(sea);
   },
   pause() { if (this.state !== 'run' && this.state !== 'count') return; this.state = 'pause'; UI.setState('pause'); UI.stopCount(); Sound.sleep(); },
   resume() {
@@ -330,7 +337,6 @@ const Game = {
       run.level = seg.level; run.mult = Math.min(10, run.level);
       UI.levelUp(run.level); Sound.sfx.level();
     }
-    if (Tide.follow(seg)) { Sound.sfx.tide(Tide.aim > 0); if (Tide.aim > 0) UI.toast('Here comes the tide!'); }
   },
   stumble(o) {
     const run = this.run, P = Player;
@@ -598,7 +604,7 @@ const Game = {
     this.time += dt;
     const st = this.state, P = Player, run = this.run;
     if (st === 'pause' || st === 'count') return;
-    if (st === 'title') { this.frameTitle(dt, false); world.update(dt, this.time, P.wx, 0, P.wz); fx.update(dt, this.pScale()); sky.update(dt, this.time, camera, WATER_Y); return; }
+    if (st === 'title') { this.frameTitle(dt, false); world.update(dt, this.time, P.wx, 0, P.wz); fx.update(dt, this.pScale()); this.updateSea(dt); sky.update(dt, this.time, camera, Tide.y); return; }
 
     let mode = 'run';
     if (st === 'intro') { this.updateIntro(dt); mode = this.introT < (this.quick ? 0 : 0.62) ? 'scare' : 'run'; }
@@ -629,7 +635,7 @@ const Game = {
   },
   // The tide, the time of day, and everything that changes when the water closes overhead.
   updateSea(dt) {
-    const want = landIndex(this.run.level);
+    const want = this.run.level - 1; // the hour moves on with every level
     if (this.skyP < want) this.skyP = Math.min(want, this.skyP + dt / 5);
     const ev = Tide.update(dt, camera.position.y);
     if (ev) {
@@ -637,17 +643,18 @@ const Game = {
       UI.plunge(sky.dim); UI.sea(under); Sound.sea(under); Sound.sfx.plunge(under);
       if (under) fx.bubbles(c.x, c.y - 1, c.z, 22, 7);
     }
-    sky.setLook(this.skyP, Tide.sub);
+    this.homeK = damp(this.homeK, this.state === 'title' ? 1 : 0, 2.4, dt); // on the home screen the haze sits close; it opens out as he sets off
+    sky.setLook(this.skyP, Tide.sub, this.homeK);
     if (Tide.under && this.state !== 'over') { // bubbles drifting up all around, and a trail from his nose
       const P = Player, d = P.seg.dir;
       this.bubT -= dt;
       if (this.bubT <= 0) {
         this.bubT = 0.07;
-        const a = 4 + Math.random() * 24, b = (Math.random() - 0.5) * 17;
+        const a = this.state === 'title' ? (Math.random() - 0.3) * 9 : 4 + Math.random() * 24, b = (Math.random() - 0.5) * 17;
         fx.bubbles(P.wx + d.fx * a + d.rx * b, Math.random() * 3.2, P.wz + d.fz * a + d.rz * b, 1, 0.2);
         if (Math.random() < 0.5 && monkey.root.visible) { monkey.head.getWorldPosition(_nose); fx.bubbles(_nose.x, _nose.y + 0.1, _nose.z, 1, 0.12, 0.55); }
       }
-      if (Math.random() < dt * 1.2) Sound.sfx.bloop();
+      if (Math.random() < dt * (this.state === 'title' ? 0.4 : 1.2)) Sound.sfx.bloop();
     }
   },
   pScale() { return renderer ? renderer.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360)) : 400; },

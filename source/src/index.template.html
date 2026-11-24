@@ -118,6 +118,13 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
 .plain{font-weight:700;font-size:18px;white-space:nowrap;background:var(--cream);border:3px solid var(--ink);border-radius:999px;padding:.34em 1.2em .4em;box-shadow:0 4px 0 var(--ink);transition:transform .06s,box-shadow .06s}
 .plain:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
 .how{margin:0;font-size:clamp(15px,4.3vw,19px);font-weight:700;color:#fff;--stroke:5px;--drop:2px}
+/* where to run: one pill, two halves, the chosen half filled in */
+.maps{display:flex;background:var(--cream);border:3px solid var(--ink);border-radius:999px;box-shadow:0 4px 0 var(--ink);overflow:hidden}
+.map{font-weight:700;font-size:clamp(15px,4.4vw,17px);line-height:1.2;white-space:nowrap;min-height:40px;padding:.5em 1.05em .56em;color:rgba(58,30,20,.72)}
+.map + .map{border-left:3px solid var(--ink)}
+.map[aria-checked="true"]{background:var(--banana);color:var(--ink)}
+#mapTide[aria-checked="true"]{background:#0A8C8A;color:var(--cream)}
+.map:focus-visible{outline-offset:-5px}
 .meta{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center}
 .meta .chip{font-size:17px;padding-left:12px}
 .meta .chip.nana{padding-left:7px}
@@ -204,8 +211,9 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
   #title{gap:1.5vh;justify-content:space-between;padding-top:max(10px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom))}
   .logo{font-size:clamp(32px,12.5vh,72px)}
   .ribbon{font-size:clamp(13px,4.6vh,20px)}
-  .title-foot{gap:8px}
+  .title-foot{gap:7px}
   .title-foot .big{font-size:24px}
+  .map{min-height:36px;padding:.36em 1.05em .42em}
   .how{font-size:15px}
   /* a phone on its side: the cards go wide and short, with the stats two to a row */
   #over .card,#pause .card{width:min(100%,440px);padding:12px 20px 16px;gap:8px}
@@ -257,6 +265,10 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
       <p class="ribbon">and the Golden Banana</p>
     </div>
     <div class="title-foot">
+      <div class="maps" role="radiogroup" aria-label="Level">
+        <button id="mapRuins" class="map" role="radio" aria-checked="true">Jungle Ruins</button>
+        <button id="mapTide" class="map" role="radio" aria-checked="false">High Tide</button>
+      </div>
       <button id="btnRun" class="big pulse">Run!</button>
       <p id="how" class="how inked" data-t="Swipe to dodge, jump and slide">Swipe to dodge, jump and slide</p>
       <div class="row">

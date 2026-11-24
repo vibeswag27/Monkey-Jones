@@ -58,10 +58,17 @@ const GAP_MIN = 0.52;         // … down to about half a second
 const levelOf = (depth) => 1 + Math.floor(depth / LEVEL_STRETCHES);
 const levelSpeed = (L) => Math.min(SPEED_MAX, SPEED_MIN * Math.pow(SPEED_GROW, L - 1));
 const levelGap = (L) => Math.max(GAP_MIN, 1.3 * Math.pow(GAP_SHRINK, L - 1));
-const isSea = (L) => L % 3 === 2;                              // High Tide: levels 2, 5, 8, …
-const landIndex = (L) => L - 1 - Math.floor((L + 1) / 3);      // how many dry levels came before this one
-const LAND_NAMES = ['Jungle Ruins', 'Sunset Ruins', 'Moonlit Ruins', 'Dawn Ruins'];
-const levelName = (L) => (isSea(L) ? 'High Tide' : LAND_NAMES[landIndex(L) % 4]);
+
+// Two places to run, chosen on the home screen: the ruins on a dry day, or the same ruins at high tide, under water
+// from the temple door onward. In both, the time of day moves on one step with every level.
+const MAPS = {
+  ruins: { name: 'Jungle Ruins', levels: ['Jungle Ruins', 'Sunset Ruins', 'Moonlit Ruins', 'Dawn Ruins'] },
+  tide: { name: 'High Tide', levels: ['High Tide', 'Sunset Tide', 'Moonlit Tide', 'Dawn Tide'], sea: true },
+};
+const MAP_ORDER = ['ruins', 'tide'];
+let MAP = 'ruins'; // the one in play
+const atSea = () => !!MAPS[MAP].sea;
+const levelName = (L) => MAPS[MAP].levels[(L - 1) % 4];
 
 // Headings: 0 = north (-Z), 1 = east (+X), 3 = west (-X). The path never heads south,
 // which guarantees it can never cross itself.

@@ -16,6 +16,7 @@ const CHARS = {
     pal: { body: 0xf6efa8, face: 0xf6efa8, ear: 0x86c5ae, top: 0x86c5ae, top2: 0x6db59c, paw: 0xeee18c, ink: 0x4d4722 } },
 };
 const CHAR_ORDER = ['monkey', 'smokey', 'pig', 'elephant', 'dino'];
+let FREE_CAST = true; // testing: everyone can be played without being bought. Set to false to put the prices back; what was really bought is kept.
 
 // Each head builder adds its shapes and says where the eyes go.
 const HEADS = {
@@ -524,13 +525,18 @@ class Swimmer {
       this.obj = sharedMesh(orca ? G.orca : G.seal, MAT.char);
       this.obj.add(sharedMesh(orca ? G.orcaInk : G.sealInk, orca ? MAT.inkDark : MAT.ink));
     }
-    Object.assign(this, { kind, cx: 0, cy: 3, cz: 0, rx: 3, rz: 3, w: 0.8, ph: 0, bob: 0.5, size: 1, roll: 0 }, o);
+    Object.assign(this, { kind, cx: 0, cy: 3, cz: 0, rx: 3, rz: 3, w: 0.8, ph: 0, bob: 0.5, size: 1, roll: 0, fled: -1 }, o);
     this.obj.scale.setScalar(this.size);
   }
+  flee(t) { if (this.fled < 0) this.fled = t; } // startled: up and away, and it carries on its rounds from there
   update(t) {
     const a = t * this.w + this.ph, c = Math.cos(a), s = Math.sin(a), o = this.obj;
     o.position.set(this.cx + c * this.rx, this.cy + Math.sin(a * 1.7 + this.ph) * this.bob, this.cz + s * this.rz);
     const vx = -s * this.rx * this.w, vz = c * this.rz * this.w;                 // heading follows the way it is going
     o.rotation.set(Math.cos(a * 1.7 + this.ph) * 0.16, Math.atan2(-vx, -vz), Math.sin(a * 2.3) * 0.14 + (this.roll ? Math.max(0, Math.sin(a * 0.5)) ** 8 * TAU : 0), 'YXZ');
+    if (this.fled >= 0) {
+      const k = clamp((t - this.fled) / 0.9, 0, 1), e = k * k * (3 - 2 * k);
+      o.position.y += 7 * e; o.position.x += (this.cx < 0 ? -5 : 5) * e; o.rotation.x += 0.7 * Math.sin(k * Math.PI); // nose up on the way
+    }
   }
 }

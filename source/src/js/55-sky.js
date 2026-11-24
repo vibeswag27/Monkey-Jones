@@ -112,7 +112,8 @@ class Sky {
 
   _mix(key, a, b, t) { return this._a.setHex(a[key]).lerp(this._b.setHex(b[key]), t); }
   // p: the time of day (0 morning, 1 sunset, 2 night, 3 dawn; in between they blend). sub: 0 above the water … 1 under it.
-  setLook(p, sub) {
+  // close: 0 … 1 draws the underwater haze in around the camera (the home screen, where nothing is far enough away to fade otherwise).
+  setLook(p, sub, close) {
     const q = ((p % 4) + 4) % 4, i = Math.floor(q) % 4, t = smooth(q - Math.floor(q)), a = BIOMES[i], b = BIOMES[(i + 1) % 4];
     const u = clamp(sub || 0, 0, 1), dim = lerp(a.sea, b.sea, t);
     const mix = (key, sea) => { const c = this._mix(key, a, b, t); return u > 0 ? c.lerp(this._s.setHex(sea).multiplyScalar(dim), u) : c; };
@@ -120,7 +121,8 @@ class Sky {
     this.domeMat.uniforms.uHor.value.copy(mix('hor', SEA.hor));
     this.domeMat.uniforms.uFog.value.copy(mix('fog', SEA.fog));
     this.scene.fog.color.copy(this._a);
-    this.scene.fog.near = lerp(42, 9, u); this.scene.fog.far = lerp(168, 94, u);
+    const cl = clamp(close || 0, 0, 1) * u;
+    this.scene.fog.near = lerp(lerp(42, 9, u), 4, cl); this.scene.fog.far = lerp(lerp(168, 94, u), 50, cl);
     this.waterMat.color.copy(mix('water', SEA.bed));
     this.sun.color.copy(mix('sun', SEA.sun)); this.sunBase = lerp(lerp(a.sunI, b.sunI, t), SEA.sunI, u); this.sun.intensity = this.sunBase;
     this.hemi.color.copy(mix('sky', SEA.sky)); this.hemi.groundColor.copy(mix('gnd', SEA.gnd)); this.hemi.intensity = lerp(lerp(a.hemiI, b.hemiI, t), SEA.hemiI, u);

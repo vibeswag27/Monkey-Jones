@@ -203,6 +203,16 @@ function addTemple(gb, glow, rng, z0) {
     gb.add(SHAPE.box, M(0, ty + h + 0.27, zc + 0.4, w * 0.9, 0.12, d * 0.9), ENV.moss);
     ty += h + 0.2;
   }
+  if (ENV.sea) { // at high tide the temple stands among kelp and reef instead of trees and islets
+    addKelpForest(gb, rng, -17, z0 - 3); addKelpForest(gb, rng, 17.5, z0 - 1);
+    addReef(gb, glow, rng, -11, z0 - 9, 2.6, 0.2); addReef(gb, glow, rng, 11.5, z0 - 11, 2.8, -0.2);
+    for (const sd of [-1, 1]) { // and round the doorway, where the home screen looks: kelp up the jambs, coral and a starfish by the idols
+      addKelp(gb, rng, sd * 3.75, -0.3, z0 - 0.75, rng.range(4.4, 5.6));
+      addCoral(gb, rng, sd * 5.45, -0.3, z0 - 2.45, 1.05);
+      addStarfish(gb, rng, sd * 3.75, -0.27, z0 - 2.3, 1.0);
+    }
+    return;
+  }
   addBigTree(gb, rng, -17, z0 - 3);
   addBigTree(gb, rng, 17.5, z0 - 1);
   addIsland(gb, rng, -11, z0 - 9, 2.6, 0.2, true);
