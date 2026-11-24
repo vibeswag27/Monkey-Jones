@@ -415,6 +415,7 @@ const Game = {
     const run = this.run, seg = Player.seg; run.turns++;
     if (Player.flying) for (const t of ['L', 'R']) if (seg.kids[t]) world.addSky(seg.kids[t], HJ + 6);
     if (this.hintOn >= 0) { UI.hint(null); this.hintOn = -1; }
+    if (world.prev) for (const b of world.prev.bananas) if (b.gold && b.pull < 0) b.got = true; // gold's bananas on the stretch he has left are no more use to anyone
     if (seg.level > run.level && !this.golden()) { // every corner that starts a new level: faster, tighter, and worth more (one that falls due while he is gold waits for the first corner after)
       run.level = seg.level; run.mult = Math.min(10, run.level);
       UI.levelUp(run.level); Sound.sfx.level();
@@ -456,7 +457,7 @@ const Game = {
   },
   golden() { const r = this.run; return !!r && (r.gold > 0 || r.goldOver > 0); }, // is gold on (or being held on through a corner)?
   // Gold is over. (Task 4 gives it its proper ending.)
-  endGold() { world.setHold(false); },
+  endGold() { world.setHold(false); world.dropGold(); },
   hitSolid(o) {
     const run = this.run, P = Player;
     if (run.ghost > 0 || P.flying || this.golden()) return;
@@ -489,19 +490,24 @@ const Game = {
     const eff = run.mult * (run.dbl > 0 ? 2 : 1);
     run.nanas++; run.score += 10 * eff;
     run.chain = run.chainT > 0 ? Math.min(run.chain + 1, 10) : 0; run.chainT = 0.55;
-    Sound.sfx.banana(run.chain); UI.popBananas();
+    if (!this.golden() || this.time - (this.chimeAt || 0) > 0.07) { this.chimeAt = this.time; Sound.sfx.banana(run.chain); } // (at gold's pace, not every banana gets its own chime)
+    UI.popBananas();
     fx.sparkle(b.pull >= 0 ? Player.wx : b.wx, b.pull >= 0 ? Player.y + 0.9 : b.y, b.pull >= 0 ? Player.wz : b.wz, 3, 0xfff3a8);
   },
   collect(dt) {
     const run = this.run, P = Player, seg = P.seg, B = seg.bananas, s = P.s;
-    while (seg.bI < B.length && B[seg.bI].s < s - 2.5) seg.bI++;
+    // Everything he passed since the last look counts, not only where he has ended up: at gold's speed, or on a slow frame, that is more than one banana's reach.
+    const from = this.sweepSeg === seg ? Math.min(this.sweepS, s) : s; this.sweepSeg = seg; this.sweepS = s;
+    while (seg.bI < B.length && B[seg.bI].s < from - 2.5) { if (B[seg.bI].gold) B[seg.bI].got = true; seg.bI++; } // (gold's bananas do not linger behind him)
     const reach = run.magnet > 0 ? 9 : 1.2;
     for (let i = seg.bI; i < B.length; i++) {
       const b = B[i];
       if (b.s > s + reach) break;
       if (b.got || b.pull >= 0) continue;
       const ds = b.s - s;
-      if (Math.abs(ds) < 0.95 && Math.abs(b.x - P.x) < 0.85 && Math.abs(b.y - (P.y + 0.75)) < 1.15) this.grab(b);
+      const mine = b.s > from - 0.95 && ds < 0.95 && Math.abs(b.x - P.x) < 0.85;
+      if (mine && Math.abs(b.y - (P.y + 0.75)) < 1.15) this.grab(b);
+      else if (mine && b.gold) { b.pull = 0; run.pulled.push(b); } // one of gold's own, in his lane but out of reach above or below (he is dropping off a walkway, say): it comes to him
       else if (run.magnet > 0 && ds > -1.5) { b.pull = 0; run.pulled.push(b); }
     }
     for (let i = run.pulled.length - 1; i >= 0; i--) { // bananas flying in to the magnet
@@ -520,6 +526,7 @@ const Game = {
     run.speed = damp(run.speed, golden ? Math.min(GOLD_K * vL, GOLD_VMAX) : vL * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), golden ? 6 : 5, dt);
     P.update(dt);
     if (P.dead) return;
+    if (golden) world.goldAhead(P.s); // bananas in all three lanes, as far as he can see
     if (run.gold > 0) { run.gold -= dt; if (run.gold <= 0) { run.gold = 0; this.endGold(); } }
     run.dist += run.speed * dt;
     run.score += run.speed * dt * run.mult * (run.dbl > 0 ? 2 : 1);

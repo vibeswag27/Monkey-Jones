@@ -99,8 +99,8 @@ const rig = require('./rig');
   await test('gold: he runs through a totem, a beam, a log, rubble, a sweeper and a bobber; each is knocked away and scores 50', () => {
     const G = __mj.Game, P = __mj.Player, seg = T.start(), s = P.s; G.goldSaves = 0;
     const hit = [T.pillar(seg, 1, s + 20), T.beam(seg, s + 32), T.log(seg, s + 44), T.rubble(seg, 1, s + 56), T.mover(seg, 'side', 1, s + 68, 0, 0), T.mover(seg, 'bob', 1, s + 80, 0, 0)];
-    T.gold(30); const base = G.run.score - G.run.dist;
-    const alive = T.to(s + 86), bonus = Math.round(G.run.score - G.run.dist - base);
+    T.gold(30); const base = G.run.score - G.run.dist - 10 * G.run.nanas; // (what is left of the score once distance and bananas are taken out is the smashing)
+    const alive = T.to(s + 86), bonus = Math.round(G.run.score - G.run.dist - 10 * G.run.nanas - base);
     return { ok: alive && hit.every((o) => o.gone) && bonus === 300 && G.run.danger <= 0 && G.goldSaves === 0 && G.run.gold > 0, alive, gone: hit.map((o) => !!o.gone), bonus, saves: G.goldSaves };
   });
   await test('gold: what he does not touch is left standing (a totem in the next lane, a bobber high overhead, a log he jumps)', () => {
@@ -165,6 +165,52 @@ const rig = require('./rig');
     const ahead = []; const walk = (seg) => { if (!seg || seg.dead) return; ahead.push(seg.depth); walk(seg.kids.L); walk(seg.kids.R); }; walk(P.seg);
     return { ok: d0 === 3 && before.every((d) => d === 4) && G.state === 'run' && G.run.turns === 3 && [...levels].join() === '1' && depths.every((d) => d === 3) && ahead.every((d) => d === 3) && m.world.hold === true && G.goldSaves === 0,
       d0, before, turns: G.run.turns, levels: [...levels], depths, ahead, hold: m.world.hold };
+  });
+
+  // ── bananas everywhere ──
+  await test('bananas: a moment into gold, every floor row from 4 m ahead to the end of the stretch has one in each lane, at the height of the floor there', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), d = T.deck(seg, 2, P.s + 30, P.s + 55, false);
+    T.gold(30); T.wait(0.2);
+    let slots = 0, missing = 0, onDeck = 0;
+    for (let k = 0; ; k++) {
+      const s = seg.floorStart + (k + 0.5) * 2.4; if (s > seg.len - 3.2 - 4) break; if (s < P.s + 4) continue;
+      for (const x of [-1.9, 0, 1.9]) {
+        const y = seg.floorY(s, x) + 0.62; slots++;
+        if (!seg.bananas.some((b) => !b.got && Math.abs(b.s - s) < 1 && Math.abs(b.x - x) < 0.5 && Math.abs(b.y - y) < 0.6)) missing++;
+        else if (y > 2.5) onDeck++;
+      }
+    }
+    return { ok: slots > 60 && missing === 0 && onDeck >= 8, slots, missing, onDeck };
+  });
+  // a gold run at top speed with no hand on the controls: how many of the gold bananas in his own lane did he get, and how full did the world's banana list ever become?
+  const sweep = (opts) => page.evaluate((o) => {
+    const G = __mj.Game, P = __mj.Player, m = __mj, dt0 = T.dt;
+    T.start('ruins', 12); T.dt = o.dt; G.goldSaves = 0;
+    if (o.magnet) { G.run.magnet = 60; G.run.max.magnet = 60; }
+    const g0 = G.grab; let got = 0; G.grab = function (b) { if (b.gold) got++; return g0.call(this, b); };
+    T.gold(60); let passed = 0, most = 0, d0 = G.run.dist;
+    const alive = T.wait(o.secs, () => {
+      for (const b of P.seg.bananas) if (b.gold && !b.seen && b.s < P.s - 3 && Math.abs(b.x - P.x) < 0.5) { b.seen = true; passed++; }
+      most = Math.max(most, m.world.nanas.count);
+    });
+    G.grab = g0; T.dt = dt0;
+    return { alive, got, passed, most, metres: Math.round(G.run.dist - d0), turns: G.run.turns, saves: G.goldSaves };
+  }, opts);
+  await scene('bananas: at 58 m/s he misses none in his lane, at 60 frames a second and at 20', async () => {
+    const a = await sweep({ dt: 1 / 60, secs: 10 }), b = await sweep({ dt: 1 / 20, secs: 10 });
+    const fine = (r) => r.alive && r.metres > 520 && r.passed > 150 && r.got >= 0.97 * r.passed && r.saves === 0;
+    return { ok: fine(a) && fine(b), at60: a, at20: b };
+  });
+  await scene('bananas: with the magnet on he takes all three lanes; and the world never has more bananas to draw than it can', async () => {
+    const plain = await sweep({ dt: 1 / 60, secs: 8 }), mag = await sweep({ dt: 1 / 60, secs: 8, magnet: true });
+    return { ok: mag.alive && mag.got > 2.5 * plain.got * (mag.metres / plain.metres) && plain.most < 640 && mag.most < 640, plain, mag };
+  });
+  await test('bananas: when gold ends none of its bananas are left, on this stretch or any other', () => {
+    const G = __mj.Game, P = __mj.Player, m = __mj; T.start(); T.gold(1.2); T.wait(0.6);
+    const during = P.seg.bananas.filter((b) => b.gold && !b.got).length;
+    let n = 0; while (G.state === 'run' && G.golden() && n++ < 900) G.update(T.dt);
+    let left = 0; const walk = (seg) => { if (!seg || seg.dead) return; left += seg.bananas.filter((b) => b.gold && !b.got).length; walk(seg.kids.L); walk(seg.kids.R); }; walk(m.world.cur); walk(m.world.prev);
+    return { ok: during > 30 && !G.golden() && left === 0, during, left, golden: G.golden() };
   });
 
   const bad = errors.filter((e) => !/ReadPixels/.test(e));

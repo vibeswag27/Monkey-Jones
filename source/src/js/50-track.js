@@ -626,6 +626,34 @@ class World {
     }
     seg.bananas.sort((a, b) => a.s - b.s); seg.bI = 0;
   }
+  // Gold's bananas: one in each lane at every floor row from `from` to `to`, at the height of the floor there (so along the top
+  // of a walkway where there is one), except where a banana already hangs. Calling it again only carries the rows further.
+  addGold(seg, from, to) {
+    if (!seg || seg.dead) return;
+    const top = Math.min(to, seg.len - HJ - 0.5), k0 = Math.ceil((Math.max(from, seg.goldTo === undefined ? -1e9 : seg.goldTo + 0.01) - seg.floorStart) / ROW - 0.5);
+    let s = seg.floorStart + (Math.max(0, k0) + 0.5) * ROW;
+    if (s > top) return;
+    const B = seg.bananas, old = B.length;
+    for (; s <= top; s += ROW) {
+      for (let l = 0; l < 3; l++) {
+        const x = laneX(l), y = seg.floorY(s, x) + 0.62;
+        let taken = false;
+        for (let i = 0; i < old && !taken; i++) { const b = B[i]; taken = !b.got && Math.abs(b.s - s) < 1 && Math.abs(b.x - x) < 0.5 && Math.abs(b.y - y) < 1; }
+        if (!taken) B.push({ s, x, y, got: false, pull: -1, ph: s * 0.9 + l * 2.1, wx: seg.wx(s, x), wz: seg.wz(s, x), gold: true });
+      }
+      seg.goldTo = s;
+    }
+    B.sort((a, b) => a.s - b.s); seg.bI = 0;
+  }
+  // While he is gold: rows right to the end of the stretch he is on (from just ahead of him), and along the first 60 m of whatever comes next.
+  goldAhead(s) {
+    this.addGold(this.cur, s + 3, 1e9);
+    for (const t of ['L', 'R']) { const k = this.cur.kids[t]; if (k) this.addGold(k, -1e9, k.floorStart + 60); }
+  }
+  dropGold() { // gold is over: its bananas go with it
+    const clear = (seg, n) => { if (!seg || n > 3) return; seg.goldTo = undefined; for (const b of seg.bananas) if (b.gold && !b.got && b.pull < 0) b.got = true; clear(seg.kids.L, n + 1); clear(seg.kids.R, n + 1); };
+    clear(this.cur, 0); clear(this.prev, 3);
+  }
   dropSky() { // the flight is over: clear whatever is still hanging in the air
     this.skyOn = false;
     const clear = (seg) => { if (!seg || seg.dead) return; seg.sky = false; for (const b of seg.bananas) if (b.sky && !b.got && b.pull < 0) b.got = true; for (const t of ['L', 'R']) clear(seg.kids[t]); };
@@ -646,7 +674,7 @@ class World {
     // bananas: one instanced draw for every banana in view
     const arr = this.nanas.instanceMatrix.array, cap = this.cap;
     let n = 0;
-    const segs = [this.prev, this.cur, this.cur.kids.L, this.cur.kids.R], wet = Tide.y > SEA_LIFE_Y;
+    const segs = [this.cur, this.cur.kids.L, this.cur.kids.R, this.prev], wet = Tide.y > SEA_LIFE_Y; // (what is ahead first: should the banana list ever fill, what goes undrawn is behind him)
     if (wet !== this.wet) { this.wet = wet; this.showSeaLife(this.prev, wet, 0); this.showSeaLife(this.cur, wet, 0); } // coral and company appear as the water reaches them
     for (const seg of segs) {
       if (!seg || seg.dead) continue;
