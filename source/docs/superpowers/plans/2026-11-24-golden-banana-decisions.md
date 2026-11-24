@@ -1,0 +1,60 @@
+# The Golden Banana: the calls made while building it
+
+Every place the build departed from the plan or the plan was silent, as recorded at the time: what was decided, why, and what it costs if it was the wrong call. The plan is `2026-11-24-golden-banana.md`, the design `../specs/2026-11-24-golden-banana-design.md`. Release build 1795553728.
+
+The whole branch was read back at the end by its author (no second reviewer was used: none was asked for). What that found and fixed is listed after the rulings; what it found and left is under "Deferred minors".
+
+## Rulings
+
+- Setup: build on branch golden-banana in place (no separate worktree) — the repo's built site lives at its root and the tests read ../ paths; a worktree bought nothing last time — cost if wrong: none while only one piece of work is in flight.
+- Setup: Ale's "Has this been implemented?" (three hours after the design summary and its "Anything wrong or missing?") is taken as approval of the design as written — he raised no change, and asking again would stall him a second time; I told him so before starting — cost if wrong: a detail he would have changed is built and has to be reworked.
+- Setup: native execution, no executor question and no plan review asked of Ale — he does not read plans; same footing as the run overhaul — cost if wrong: none.
+- Setup: pushing gh-pages and republishing the artifact when the suite is green is pre-authorised by the standing arrangement (every game change goes to both) — cost if wrong: a version he had not seen goes to the phones; it can be reverted with one push.
+- Task 1: the rule-test rig (window.T) moved out of test/overhaul.js into test/rig.js so test/gold.js can share it — not in the plan; the alternative was forty copied lines — cost if wrong: none (overhaul.js still passes 35/35).
+- Task 1: a hot-swapped page (the artifact republished while open) takes the golden-banana count from the page it replaces rather than the larger of the two, unlike bananas and best score — a spent golden banana must stay spent — cost if wrong: none seen; only matters where storage is unavailable.
+- Task 1: the HUD's timer chip for gold is wired now (the chip list and the shop's icons are one table) rather than in Task 6 — cost if wrong: none.
+- Task 2: holding the level also re-levels the stretches already built ahead (the world keeps two generations in hand), not only those made afterwards as the plan said — otherwise every use still carried him two stretches (half a level) deeper, against the spec's "must not carry the player into a harder game than they left" — cost if wrong: up to two stretches he crosses while gold were laid out for the next level's pace but count as this one's.
+- Task 2: he smashes only what his body actually overlaps (a log he jumps, a bobber overhead, a totem in the next lane are left standing) — the spec says "that he runs into"; a test pins it — cost if wrong: fewer smashes than a player who expects everything in sight to burst.
+- Task 2: the autopilot keeps playing while gold is on (it is not told to stand down) — its swipes and jumps during gold are free extra coverage of mixed input — cost if wrong: none.
+- Task 3: one of gold's bananas that is in his lane but out of reach above or below him (he is dropping off a walkway, or jumping) flies to him as a magnet's would — the plan only asked for a sweep along the path; without this about six rows were lost after every walkway — cost if wrong: jumping no longer costs him gold's bananas, which makes jumping during gold purely for show.
+- Task 3: the chime is thinned in Game.grab (one every 0.07 s while gold) rather than in 10-audio.js as the plan's file list said — one line where the decision is made — cost if wrong: none.
+- Task 3: gold's bananas are marked gone as soon as they are 2.5 m behind him and when he leaves a stretch, and the world now fills its draw list from the stretch ahead before the one behind — keeps the list (640) from filling with bananas nobody can see; measured peak 415 — cost if wrong: none seen.
+- Task 4: the hold through a corner is not cut off at GOLD_OVER (3.5 s) by ending gold — ending it in a run-up is exactly what the hold exists to prevent (he would meet the corner's far wall); the hold is bounded by the length of the run-up instead (about a second at gold's speed) and the tests assert it stays under 3.5 s — cost if wrong: if a stretch ever failed to build, gold would wait at the corner with him instead of ending.
+- Task 4: gold may end in the very frame he rounds the corner (the new stretch's start is clear ground), so "still gold through the corner" is tested as "never dropped before the corner, off within a second after it" — cost if wrong: none.
+- Task 4: with the level held on every stretch ahead (Task 2's ruling) no level-up can fall due during gold, so the plan's "pending level-up at the first corner after" became "the run gets deeper again a few corners after gold": level 2 arrives when the first stretch laid after gold is reached — cost if wrong: none; the level is held more firmly than the plan asked.
+- Task 4: the burst gives no points (only things he runs into score) and the grace cannot run out over a gap for any ghost, rocket landings and bounces included — the second is a general kindness the plan asked for only after gold — cost if wrong: a rocket landing over a long gap is now always survived, where before it could drop him.
+- Task 5: CRATE_ODDS is 0.035, not the plan's 0.03 — about one chosen stretch in seven has nowhere fit to put a crate, and what Ale was told is "about 3 stretches in 100" (measured: see test/gen.js) — cost if wrong: crates a shade commoner or rarer than promised; one constant.
+- Task 5: a crate carries a gold glow and a shaft of light (two additive sprites) and is drawn 1.3 times its modelled size — in the first screenshots something this rare was a small brown box that could be run past unseen — cost if wrong: cosmetic.
+- Task 5: pick-ups of every kind are now tested against everything he passed since the last frame (as bananas are since Task 3), so a token or crate cannot be skipped at gold's speed on a slow frame — the plan asked this only of bananas — cost if wrong: none.
+- Task 6: at gold's speed everything the runner throws off (dust, sparkle, banana glints, the pieces of what he smashes) is carried along at the speed gold is heading for (fx.carry), and smashed pieces are flung on ahead (fx.shards) — left where they were, the camera ran straight into them 0.13 s later and the screen filled with brown blobs (seen in the first photographs; pinned by "nothing he throws off…") — if wrong: dust and pieces look as if they follow him rather than stay put.
+- Task 6: a crate's splinters and sparkle are carried with him too, at any speed (ordinary play as well as gold) — same reason, at 12–29 m/s — if wrong: as above, for half a second after a crate.
+- Task 6: the end-of-gold flicker is 3 a second, not the shield's faster flicker, and does not happen at all under prefers-reduced-motion (gold then holds steady to the end; the tick still counts down) — flashing a bright colour on and off faster than that is a known hazard — if wrong: the warning that gold is about to end is a little less insistent.
+- Task 6: the look is a solid-gold material swapped onto every mesh that wears the character material (eyes, packs and held things keep their own), a trail of about 36 stars a second that falls behind him and is gone short of the camera, and a soft gold glow round the screen's edge; the camera opens by at most 14 degrees — the spec left the look to the builder — if wrong: a matter of taste, one material and three numbers to change.
+- Task 6: test library gained `reduced` (emulates prefers-reduced-motion) and the test hooks expose `fx`; neither is used by the game itself.
+- Task 7: going home in the middle of gold now tells the HUD (UI.hud on toTitle) — the gold edge-glow was left on over the home screen (found by the new 'leaving:' rule, RED→GREEN) — if wrong: nothing; the HUD is hidden there anyway.
+- Task 7: a golden banana set off and then abandoned (restart, home) stays spent — it was spent and saved at the moment of use, and refunding would let a player bank the opening burst for free — if wrong: a player who quits mid-gold is one banana down.
+- Final: a tap must stay within 12 px, where the design said "neither moves 22 px" — between 12 and 22 px a touch is a failed swipe, not a tap, and two of those in a panic should not spend something rare — if wrong: a very wobbly double tap is not recognised and has to be made again.
+- Final: the golden button's own click is kept only for presses that no touch made (keyboard, screen reader: click with detail 0, or none of its touches in the last 0.6 s) — the touch path decides the rest — if wrong: at worst a tool that sends a touch and then a late click presses twice, and gold refuses the second.
+- Final: a double tap (or one press of the golden button) sets a banana off at once, with no confirmation — it is what was asked for, and a question mid-run would cost more than it saves — if wrong: an accidental double tap spends one of a rare thing.
+
+## Found and fixed in the final read-through
+
+- Fixed "a swipe that begins on the golden button is swallowed (no jump, no lane change), and a short one spends a banana" (Important: the button sits where a right thumb swipes, and the stock is rare) — 'button: a swipe that starts on the golden button is still a swipe…' RED→GREEN, gold suite 49/49.
+- Fixed "two flicks too short to be swipes count as a double tap and spend a banana" (Important) — 'double tap: two quick flicks too short to be swipes are not a double tap…' RED→GREEN, 49/49.
+- Fixed "under water his trail is stars; the design says golden bubbles" (Important: a stated part of the design, missing) — 'look: on land his trail is stars; under water it is golden bubbles' RED→GREEN, 49/49.
+- Fixed "a crate's message was the same as setting one off ('Golden banana!')" — crate rule now expects '+1 Golden Banana' (and 'No room for more' at 99) RED→GREEN, 49/49.
+
+## Deferred minors
+
+- For 0.2 s after a screen is left (home, game over) its buttons can still be touched while it fades; the home screen's sound button lies under the golden button's spot. Older than this work, and inside the intro, when the game takes no input anyway.
+- A crate's own idle twinkles (one or two small stars) stay where the crate was when it is taken, so one can cross the bottom of the view a moment later.
+- A crate's splinters are the same soft dots as other debris; they read as bits rather than as planks.
+- Game.goldSaves, the count of last-ditch saves that the tests insist is zero, lives in the game itself rather than in the tests.
+- The golden button stays lit (and clicks) on the pause screen, where it can do nothing.
+- On the first frame after a corner the banana sweep starts from where he is, not from the start of the new stretch; nothing is laid that close to a corner today.
+- At gold's speed the next stretch is built about two and a half times as often (each build costs what it always has: about 8 ms in Jungle Ruins and 31 ms in High Tide on the test machine), and now and then two fall in one frame (83 ms seen once in High Tide, against 60 in ordinary play). Not measured on a real phone.
+
+## What was run
+
+- Gold soak (2 runs x 4,000 m from levels 1/4/8/12, both levels, 60 and 20 fps): 32 runs, 400 uses, 935 smashed, 46,274 bananas, 0 deaths, 0 last-ditch saves, longest corner hold 0.9 s. (the first full soak, before the review fixes)
+- Verification on release build 1795553728 (no rebuild in between): gold 49/49, overhaul 35/35, gen PASS, app PASS, levels tide/ruins/tide-as-seal PASS, final, charshot, tutorial, homeseal, turn x3, swipe x2, audio x2, names, soak x2, soak2 x3, states PASS; gold soak 32 runs, 399 uses, 0 deaths, 0 last-ditch saves, longest corner hold 0.9 s; real-time smoke (own frame loop, real double tap) PASS. Ordinary play costs what the live build costs (logic 0.06 ms a frame in Ruins, 0.15 in High Tide; stretch builds 8 and 31 ms).
