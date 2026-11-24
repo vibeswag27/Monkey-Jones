@@ -81,11 +81,26 @@ function genSegment(seg, W) {
   };
   const addDeck = (lane, s0, s1, ramp) => { const x = laneX(lane), d = { lane, s0, s1, h: DECK_H, ramp, r0: ramp ? s0 - RAMP_LEN : s0, x0: x - LANE_W / 2, x1: x + LANE_W / 2 }; seg.decks.push(d); return d; };
   const landing = 0.75 * v;                                  // clear ground kept after anything he may come down from
+  const addPad = (s, lane, d) => { const x = laneX(lane), o = { type: 'pad', lane, s, s0: s - 0.6, s1: s + 0.6, x0: x - 0.8, x1: x + 0.8, y0: 0, y1: 0.3, d }; O.push(o); if (d) d.pad = o; return o; };
   const nana = (s, lane, y) => B.push({ s, x: laneX(lane), y: y === undefined ? 0.62 : y, got: false, pull: -1, ph: rng.f() * TAU, wx: 0, wz: 0 });
   const line = (s0, s1, lane, y) => { for (let s = s0; s <= s1 + 0.01; s += 1.9) nana(s, lane, y); };
   const arc = (mid, lane) => {
     const half = (v * AIR_T) / 2, n = Math.max(1, Math.floor((half - 0.5) / 1.9));
     for (let i = -n; i <= n; i++) { const ds = i * 1.9; nana(mid + ds, lane, 0.62 + JUMP_H * 0.93 * (1 - (ds / half) * (ds / half))); }
+  };
+
+  const bow = (ps, lane, t0, t1) => { for (let t = t0; t <= t1 + 1e-6; t += 1.9 / v) nana(ps + v * t, lane, 0.62 + PAD_V * t - (GRAVITY / 2) * t * t); }; // bananas strung along the path of a bounce
+  // The low road beside a raised walkway: things to hop over and, where there is a lane beside it to dodge into, now and then a totem.
+  const lowRoad = (d) => {
+    const low = others(d.lane), gapLow = Math.max(12, v * 1.05 * tight);
+    for (let r = d.s0 + rng.range(1, 4); r < d.s1 - 0.4 * v - 1.2; r += gapLow * rng.range(1, 1.3)) {
+      const a = rng.pick(low), b = low[0] === a ? low[1] : low[0];
+      const kind = rng.weighted([[3, 'rubble'], [3, 'log'], [2, 'both'], [d.lane !== 1 && prog >= 1 ? 2 : 0, 'totem']]);
+      if (kind === 'rubble') addRubble(r, a);
+      else if (kind === 'log') addLog(r, a, a);
+      else if (kind === 'both') { addLog(r, a, a); if (rng.chance(0.5)) addLog(r, b, b); else addRubble(r, b); }
+      else { addPillar(r, a); if (rng.chance(0.4)) addLog(r, b, b); }
+    }
   };
 
   // Patterns return how many metres they used, or -1 if they did not fit.
@@ -139,19 +154,32 @@ function genSegment(seg, W) {
     deck(s) {
       const len = Math.min(clamp(v * rng.range(1.3, 2.1), 14, 46), end - s - RAMP_LEN - landing);
       if (len < 12) return -1;
-      const lane = rng.int(0, 2), d = addDeck(lane, s + RAMP_LEN, s + RAMP_LEN + len, true), low = others(lane);
+      const lane = rng.int(0, 2), d = addDeck(lane, s + RAMP_LEN, s + RAMP_LEN + len, true);
       for (let i = 1; i < 3; i++) nana(d.r0 + i * 1.9, lane, 0.62 + (DECK_H * i * 1.9) / RAMP_LEN);
       line(d.s0 + 0.2, d.s1 - 1, lane, DECK_H + 0.62);
-      const gapLow = Math.max(12, v * 1.05 * tight);
-      for (let r = d.s0 + rng.range(1, 4); r < d.s1 - 0.4 * v - 1.2; r += gapLow * rng.range(1, 1.3)) {
-        const a = rng.pick(low), b = low[0] === a ? low[1] : low[0];
-        const kind = rng.weighted([[3, 'rubble'], [3, 'log'], [2, 'both'], [lane !== 1 && prog >= 1 ? 2 : 0, 'totem']]); // a totem only where there is a lane beside it to dodge into
-        if (kind === 'rubble') addRubble(r, a);
-        else if (kind === 'log') addLog(r, a, a);
-        else if (kind === 'both') { addLog(r, a, a); if (rng.chance(0.5)) addLog(r, b, b); else addRubble(r, b); }
-        else { addPillar(r, a); if (rng.chance(0.4)) addLog(r, b, b); }
-      }
+      lowRoad(d);
       return RAMP_LEN + len + landing;
+    },
+    // A bounce pad with a block behind it: the bounce is the only way up, and the bananas show the way.
+    padDeck(s) {
+      const lead = 0.25 * v + 1, len = Math.min(clamp(v * rng.range(1.4, 2.1), 14, 46), end - s - 1 - lead - landing);
+      if (len < Math.max(12, 1.1 * v)) return -1;
+      const lane = rng.int(0, 2), ps = s + 1, d = addDeck(lane, ps + lead, ps + lead + len, false);
+      addPad(ps, lane, d);
+      bow(ps, lane, 0.14, 0.7);
+      line(ps + v * 0.76 + 1, d.s1 - 1, lane, DECK_H + 0.62);
+      lowRoad(d);
+      return 1 + lead + len + landing;
+    },
+    // A bounce pad with a clump of totems behind it: sail over the lot, or pick a way through on foot.
+    padPile(s) {
+      const fly = v * PAD_AIR, ps = s + 1, lane = rng.int(0, 2), rest = others(lane), r = ps + 0.36 * fly, flip = rng.chance(0.5), b = flip ? rest[0] : rest[1], c = flip ? rest[1] : rest[0];
+      addPad(ps, lane);
+      addPillar(r, lane); addPillar(r + 1.5, lane);
+      if (rng.chance(0.5)) addPillar(r, b); else addLog(r, b, b);
+      if (rng.chance(0.4)) { if (rng.chance(0.5)) addLog(r, c, c); else addRubble(r, c); }
+      bow(ps, lane, 0.14, 0.8);
+      return 1 + fly + 0.55 * v;
     },
     // A block of masonry with no way up it (short of springs, a shield or a bounce): something to go round, now and then two abreast.
     wall(s) {
@@ -169,7 +197,7 @@ function genSegment(seg, W) {
     },
   };
   const need = { pillars1: 1.3, pillars2: 1.3, log: 1, beam: 1, beamPillar: 1.3, gap: 5 * ROW, narrow: 8 * ROW, zig: dZig + 1.3, logBeam: dLogBeam + 1, beamLog: dBeamLog + 1, rubble: 1.2, mixed: 1.3, bananas: 21,
-    deck: RAMP_LEN + 12 + landing, wall: 8 + landing };
+    deck: RAMP_LEN + 12 + landing, wall: 8 + landing, padDeck: 2 + 0.25 * v + Math.max(12, 1.1 * v) + landing, padPile: 1 + v * PAD_AIR + 0.55 * v };
 
   if (tutorial) { // a gentle opening that teaches one move at a time
     line(7.6, 22.8, 1);
@@ -189,7 +217,7 @@ function genSegment(seg, W) {
         [3, 'pillars1'], [prog >= 0.5 ? 2.3 : 0.7, 'pillars2'], [3 * hop, 'log'], [2.5, 'beam'], [1 / hard, 'bananas'],
         [on(0.5, 2.3), 'gap'], [on(0.75, 1.6), 'rubble'], [on(1, 1.6 * hard * hop), 'mixed'], [on(1.75, 1.3 * hard), 'beamPillar'],
         [on(2, 1.8 * hard), 'narrow'], [on(2.25, 1.8 * hard), 'zig'], [on(2.75, 1.5 * hard * hop), 'logBeam'], [on(2.75, 1.3 * hard * hop), 'beamLog'],
-        [on(0.25, 2.6), 'deck'], [on(1, 1.1 * hard), 'wall'],
+        [on(0.25, 2.6), 'deck'], [on(1, 1.1 * hard), 'wall'], [on(0.75, 2), 'padDeck'], [on(1.25, 1.2 * Math.min(hard, 2)), 'padPile'],
       ];
       let name = rng.weighted(table);
       if (name === last) name = rng.weighted(table);
@@ -208,6 +236,7 @@ function genSegment(seg, W) {
     }
   }
   O.sort((a, b) => a.s0 - b.s0);
+  seg.pads = O.filter((o) => o.type === 'pad');
   B.sort((a, b) => a.s - b.s);
   for (const b of B) { b.wx = seg.wx(b.s, b.x); b.wz = seg.wz(b.s, b.x); }
 }
@@ -363,6 +392,7 @@ function buildSegment(seg, W) {
     }
     else if (o.type === 'rubble') addRubbleMesh(ob, ol, rng, laneX(o.lane), z);
     else if (o.type === 'beam') addBeamMesh(ob, ol, glow, rng, z);
+    else if (o.type === 'pad') addPadMesh(ob, ol, glow, rng, laneX(o.lane), z, sea);
     o.rOb = [a, ob.n]; o.rOl = [b, ol.n]; o.rGl = [c, glow.n];
   }
 
@@ -558,6 +588,12 @@ class World {
         n++;
       }
       if (seg.critters) for (const c of seg.critters) c.update(t);
+      if (seg.sea && seg.pads && wet) for (const o of seg.pads) { // the bubble jets blow, while they are near enough to see
+        if (o.used) continue;
+        const jx = seg.wx(o.s, laneX(o.lane)), jz = seg.wz(o.s, laneX(o.lane));
+        if ((jx - px) * (jx - px) + (jz - pz) * (jz - pz) > 5600) continue;
+        if ((o.bt = (o.bt || 0) - dt) <= 0) { o.bt = 0.13 + Math.random() * 0.1; fx.bubbles(jx, 0.55, jz, 1, 0.4, 1.3); }
+      }
       for (const p of seg.pickups) if (p.sprite && !p.got) { p.sprite.position.y = p.y + Math.sin(t * 3.2 + p.s) * 0.14; const k = 1.5 + Math.sin(t * 6 + p.s) * 0.07; p.sprite.scale.set(k, k, 1); }
     }
     this.nanas.count = n; this.nanaInk.count = n;

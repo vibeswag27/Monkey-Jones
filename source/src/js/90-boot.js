@@ -5,9 +5,20 @@ const Bot = {
     const P = Player, seg = P.seg, v = Game.run.speed, li = lane + 1, x = lane * LANE_W;
     let best = null;
     const see = (kind, s0, mid) => { if (!best || s0 < best.s0) best = { kind, s0, mid }; };
+    // A bounce pad ahead in this lane will carry him over whatever lies within its flight, provided he will be on the ground
+    // (and, if it is in another lane, across to it) by the time he reaches it.
+    let fly0 = 1e9, fly1 = -1e9, served = null;
+    const touch = P.grounded ? P.s : P.s + v * (P.vy + Math.sqrt(P.vy * P.vy + 2 * GRAVITY * Math.max(0, P.y - P.floor))) / GRAVITY; // where his feet next meet the floor
     for (const o of seg.obstacles) {
-      if (o.gone || o.s1 < from) continue;
+      if (o.type !== 'pad' || o.used || o.lane !== li || o.s1 < P.s) continue;
       if (o.s0 > to) break;
+      if (o.s1 - 0.25 > touch && (lane === P.lane || o.s0 > P.s + v * 0.16 + 0.5) && !P.bouncing) { fly0 = o.s0; fly1 = o.s + v * PAD_AIR * 0.96; served = o.d || null; }
+      break;
+    }
+    for (const o of seg.obstacles) {
+      if (o.gone || o.s1 < from || o.type === 'pad') continue;
+      if (o.s0 > to) break;
+      if (o.s0 >= fly0 && o.s0 <= fly1) continue; // under the bounce
       if (o.type === 'pillar') { if (o.lane === li) see('block', o.s0, o.s); }
       else if (o.type === 'beam') see('slide', o.s0, o.s);
       else if (x + 0.36 > o.x0 && x - 0.36 < o.x1) see('jump', o.s0, o.s);
@@ -20,14 +31,14 @@ const Bot = {
     // In another lane, the question is whether its side would be in the way while he crosses, and after that whether a face comes up.
     if (lane !== P.lane && seg.deckWall(li, P.s - 0.4, P.s + v * 0.13 + 0.6, P.y)) see('block', P.s, P.s);
     for (const d of seg.decks) {
-      if (d.lane !== li || d.ramp || d.s1 < from || d.s0 > to || d.s0 < P.s - 0.3) continue;
+      if (d.lane !== li || d.ramp || d.s1 < from || d.s0 > to || d.s0 < P.s - 0.3 || d === served) continue;
       if (d.h > P.y + STEP_UP) see('block', d.s0, d.s0);
     }
     return best;
   },
   think() {
     const P = Player, seg = P.seg, run = Game.run, v = Math.max(run.speed, 6);
-    if (P.dead || Game.state !== 'run' || P.flying) return;
+    if (P.dead || Game.state !== 'run' || P.flying || P.bouncing) return;
     const L = seg.len, opens = L - LANE_W - 0.45, airT = AIR_T * (run.springs > 0 ? SPRING_K : 1);
     if (!P.turnQ && P.s > opens - Math.max(7, v * 0.55) + 0.6 && P.s <= L + 2) {
       const dir = seg.jt === 'T' ? (Math.random() < 0.5 ? 'L' : 'R') : seg.jt;
@@ -53,6 +64,12 @@ const Bot = {
       if (d.fancy === undefined) d.fancy = Math.random() < 0.65;
       const h2 = d.fancy && this.hazard(d.lane - 1, s - 1.3, d.r0);
       if (d.fancy && !h2) { Game.input(d.lane - 1 < P.lane ? 'left' : 'right'); break; }
+    }
+    // and so is a bounce pad
+    if (P.grounded && P.y < 0.1 && !(mine && mine.kind === 'block')) for (const o of seg.pads || []) {
+      if (o.used || Math.abs(o.lane - 1 - P.lane) !== 1 || o.s0 < s + v * 0.3 + 1 || o.s0 > s + far) continue;
+      if (o.fancy === undefined) o.fancy = Math.random() < 0.65;
+      if (o.fancy && !this.hazard(o.lane - 1, s - 1.3, o.s0)) { Game.input(o.lane - 1 < P.lane ? 'left' : 'right'); break; }
     }
     const h = this.hazard(P.lane, s - 0.4, s + far);
     if (!h) return;

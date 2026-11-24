@@ -61,3 +61,28 @@ function addDeckMesh(gb, ol, glow, rng, d, sea) {
     }
   }
 }
+
+// A bounce pad (obstacle type 'pad'). On land a fat red mushroom; under water a vent in the rock with a column of bubbles standing over it.
+function addPadMesh(ob, ol, glow, rng, x, z, sea) {
+  if (sea) {
+    ob.add(SHAPE.taper, M(x, 0.17, z, 1.56, 0.34, 1.56, 0, rng.f() * 3, 0), SHELF[1]);
+    ol.add(SHAPE.taper, M(x, 0.17, z, 1.56 + 2 * OT, 0.34 + 2 * OT, 1.56 + 2 * OT));
+    ob.add(SHAPE.cyl12, M(x, 0.33, z, 1.0, 0.05, 1.0), 0x2b6f86);
+    glow.add(SHAPE.cyl12, M(x, 0.36, z, 0.8, 0.04, 0.8), 0x9ff6ff);
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + rng.f(), r = 0.62; ob.add(SHAPE.ico, M(x + Math.cos(a) * r, 0.3, z + Math.sin(a) * r, 0.3, 0.26, 0.3, 0, rng.f() * 3, 0), rng.pick(ENV.coral)); }
+    for (const [y, k, dx, dz] of [[0.72, 0.26, 0.05, 0], [1.14, 0.2, -0.12, 0.06], [1.5, 0.24, 0.1, -0.05], [1.94, 0.16, -0.04, 0.08], [2.36, 0.2, 0.09, 0.02], [2.84, 0.13, -0.08, -0.04]]) glow.add(SHAPE.sph, M(x + dx, y, z + dz, k, k, k), 0xeaffff); // the bubbles that never leave
+  } else {
+    ob.add(SHAPE.cyl12, M(x, 0.16, z, 0.66, 0.32, 0.66), 0xf6ead0);                                   // stem
+    ob.add(SHAPE.cyl12, M(x, 0.3, z, 1.24, 0.07, 1.24), 0xf3d2a8);                                    // gills
+    ob.add(SHAPE.sph, M(x, 0.4, z, 1.6, 0.66, 1.6), 0xf0483c);                                        // cap
+    ol.add(SHAPE.sph, M(x, 0.4, z, 1.6 + 2 * OT, 0.66 + 2 * OT, 1.6 + 2 * OT));
+    const a0 = rng.f() * TAU;
+    for (let i = 0; i < 6; i++) {                                                                      // spots, laid on the dome
+      const r = i ? 0.5 : 0, a = a0 + (i / 5) * TAU, dx = Math.cos(a) * r, dz = Math.sin(a) * r, k = i ? rng.range(0.24, 0.32) : 0.4;
+      ob.add(SHAPE.sphLo, M(x + dx, 0.4 + 0.33 * Math.sqrt(Math.max(0, 1 - (r * r) / 0.64)) - 0.01, z + dz, k, 0.07, k), 0xfff6e0);
+    }
+    for (const sd of [-1, 1]) for (const up of [0, 1]) {                                               // "up you go", in lights on the front of the cap
+      glow.add(SHAPE.box, M(x - sd * 0.12, 0.3 + up * 0.17, z + 0.79 - up * 0.05, 0.3, 0.07, 0.04, 0, 0, sd * 0.7), 0xffe45c);
+    }
+  }
+}

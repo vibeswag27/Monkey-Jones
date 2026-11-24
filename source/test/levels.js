@@ -22,9 +22,12 @@ const { open, until } = require('./lib2');
             meet('stumbles'); meet('  tripped on ' + (o ? o.type + (o.kind ? ':' + o.kind : '') : '?') + (P.seg.decks.some((d) => P.s > d.r0 - 2 && P.s < d.s1 + 2) ? ' by a deck' : ''));
           }
           hurt = G.run.danger;
-          for (const d of P.seg.decks) { // what of the new furniture did he actually meet, and what did he do about it?
-            if (!d.met && P.s > d.s0) { d.met = true; meet(d.ramp ? 'decks' : 'walls'); }
-            if (!d.stood && P.grounded && P.y > d.h - 0.1 && P.s > d.s0 && P.s < d.s1 && Math.abs(P.x - (d.x0 + d.x1) / 2) < 0.9) { d.stood = true; meet(d.ramp ? 'decksClimbed' : 'wallsTopped'); }
+          for (const o of P.seg.pads || []) { // what of the new furniture did he actually meet, and what did he do about it?
+            if (!o.met && P.s > o.s1) { o.met = true; meet(o.d ? 'padDecks' : 'padPiles'); if (o.used) meet(o.d ? 'padDecksBounced' : 'padPilesBounced'); }
+          }
+          for (const d of P.seg.decks) {
+            if (!d.met && P.s > d.s0) { d.met = true; meet(d.ramp ? 'decks' : d.pad ? 'padDeckBlocks' : 'walls'); }
+            if (!d.stood && P.grounded && P.y > d.h - 0.1 && P.s > d.s0 && P.s < d.s1 && Math.abs(P.x - (d.x0 + d.x1) / 2) < 0.9) { d.stood = true; meet(d.ramp ? 'decksClimbed' : d.pad ? 'padDecksLandedOn' : 'wallsTopped'); }
           }
         }
         const R = G.run, seg = P.seg;

@@ -12,8 +12,12 @@ const { open, until } = require('./lib2');
     ['steps', `${P}.seg.decks.some((d) => d.ramp && ${P}.s > d.r0 - 11 && ${P}.s < d.r0 - 8)`],
     ['on-top', `${P}.seg.decks.some((d) => d.ramp && ${P}.grounded && ${P}.y > 2 && ${P}.s > d.s0 + 4)`],
     ['low-road', `${P}.seg.decks.some((d) => d.ramp && ${P}.y < 0.1 && ${P}.s > d.s0 + 1 && ${P}.s < d.s0 + 5)`],
-    ['wall', `${P}.seg.decks.some((d) => !d.ramp && ${P}.s > d.s0 - 12 && ${P}.s < d.s0 - 9)`],
+    ['wall', `${P}.seg.decks.some((d) => !d.ramp && !d.pad && ${P}.s > d.s0 - 12 && ${P}.s < d.s0 - 9)`],
+    ['pad-deck', `(${P}.seg.pads || []).some((o) => o.d && !o.used && ${P}.lane === o.lane - 1 && ${P}.s > o.s - 8 && ${P}.s < o.s - 5)`],
+    ['pad-pile', `(${P}.seg.pads || []).some((o) => !o.d && !o.used && ${P}.lane === o.lane - 1 && ${P}.s > o.s - 8 && ${P}.s < o.s - 5)`],
+    ['bounce', `${P}.bouncing && ${P}.vy < 1.5`],
   ];
+  const only = process.argv[5]; if (only) for (let i = SHOTS.length - 1; i >= 0; i--) if (!only.split(',').includes(SHOTS[i][0])) SHOTS.splice(i, 1);
   const made = [];
   for (const map of which === 'both' ? ['ruins', 'tide'] : [which]) {
     for (const [name, cond] of SHOTS) {

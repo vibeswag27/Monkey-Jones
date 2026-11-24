@@ -142,6 +142,18 @@ const Player = {
     if (!this.flying && this.seg.deckWall(li, this.s - 0.4, this.s + Game.run.speed * 0.13 + 0.6, this.y)) { this.lean = d * 0.4; Sound.sfx.thud(); Cam.kick(0.22); return; }
     this.lane = nl; Sound.sfx.lane();
   },
+  // Off a bounce pad: up and over whatever is in the way, and back up to speed. A pad that serves a deck sizes its push
+  // so that he clears the lip at whatever speed he arrives.
+  bounce(pad) {
+    const run = Game.run, v = Math.max(run.speed, 3);
+    let vy = PAD_V;
+    if (pad.d) { const t = Math.max(0.08, (pad.d.s0 - this.s) / v); vy = clamp((pad.d.h + 0.5) / t + (GRAVITY / 2) * t, PAD_V, 26); }
+    pad.used = true; run.slow = 0;
+    this.vy = vy; this.grounded = false; this.bouncing = true; this.slide = 0; this.coyote = 0; this.jumpBuf = 0; this.slideOnLand = false;
+    monkey.bounce(1.5); Cam.kick(0.35); buzz(25);
+    if (this.seg.sea) { Sound.sfx.jet(); fx.bubbles(this.wx, 0.6, this.wz, 14, 1.2, 1.3); }
+    else { Sound.sfx.pad(); fx.dust(this.wx, 0.3, this.wz, 8, 0xfff0c9); fx.sparkle(this.wx, 0.9, this.wz, 6, 0xffe45c); }
+  },
   jump() {
     const sp = Game.run.springs > 0;
     this.vy = JUMP_V * (sp ? SPRING_K : 1); this.grounded = false; this.slide = 0; this.coyote = 0; this.jumpBuf = 0; this.slideOnLand = false;
@@ -151,7 +163,7 @@ const Player = {
   },
   // Rocket: lift off, and string bananas through the air ahead.
   startFlight() {
-    this.flying = true; this.grounded = false; this.vy = 0; this.slide = 0; this.coyote = 0; this.jumpBuf = 0; this.slideOnLand = false; this.stumbleT = -1;
+    this.flying = true; this.grounded = false; this.vy = 0; this.slide = 0; this.coyote = 0; this.jumpBuf = 0; this.slideOnLand = false; this.stumbleT = -1; this.bouncing = false;
     world.skyOn = true;
     world.addSky(this.seg, this.s + 10);
     for (const t of ['L', 'R']) if (this.seg.kids[t]) world.addSky(this.seg.kids[t], HJ + 6);
@@ -176,7 +188,7 @@ const Player = {
     }
     return true;
   },
-  startSlide() { this.slide = SLIDE_T; this.slideOnLand = false; monkey.bounce(0.84); Sound.sfx.slide(); fx.dust(this.wx, 0, this.wz, 5); },
+  startSlide() { this.slide = SLIDE_T; this.slideOnLand = false; monkey.bounce(0.84); Sound.sfx.slide(); fx.dust(this.wx, this.floor, this.wz, 5); },
   tryTurn() {
     const seg = this.seg, L = seg.len, dir = this.turnQ;
     if (!dir) return false;
@@ -211,12 +223,17 @@ const Player = {
       this.lane = clamp(Math.round(this.x / LANE_W), -1, 1);
     }
     while (seg.obI < O.length && O[seg.obI].s1 < s - 1.2) seg.obI++;
-    if (Game.run.ghost > 0) return; // just landed from a flight: nothing can touch him for a moment
+    const ghost = Game.run.ghost > 0 || this.bouncing; // just landed from a flight, or in the air off a bounce pad: nothing can touch him
     for (let i = seg.obI; i < O.length; i++) {
       const o = O[i];
       if (o.s0 > s + 0.3) break;
       if (o.gone || o.s1 < s - 0.3) continue;
       const hitX = x + 0.36 > o.x0 && x - 0.36 < o.x1;
+      if (o.type === 'pad') { // a bounce pad goes off under anyone who sets foot on it (jump over it and it stays asleep)
+        if (!o.used && hitX && this.grounded && this.y <= this.floor + 0.02 && s >= o.s0 && s <= o.s1) this.bounce(o);
+        continue;
+      }
+      if (ghost) continue;
       if (o.type === 'pillar') { // only a head-on hit counts; sideways bumps are handled when you swipe
         if (!o.seen) { o.seen = true; if (hitX && y < o.y1 - 0.3) { Game.hitSolid(o); if (this.dead) return; } } // springs can clear the top
       } else if (o.type === 'beam') {
@@ -266,6 +283,7 @@ const Player = {
         if (this.y <= fy && this.vy <= 0) { // down on whatever is under him (a jump that only just reaches the lip of a deck scrambles on)
           if (fy === 0 && !ghost && seg.overHole(this.s, this.x)) { this.die('fall'); return; }
           this.y = fy; this.vy = 0; this.grounded = true;
+          if (this.bouncing) { this.bouncing = false; run.ghost = Math.max(run.ghost, 0.35); } // down from a bounce: a moment's grace to find his feet
           monkey.bounce(0.8); Sound.sfx.land(); puff(seg.wx(this.s, this.x), seg.wz(this.s, this.x), 5, fy);
           if (this.slideOnLand) this.startSlide();
           else if (this.jumpBuf > 0) this.jump();

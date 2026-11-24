@@ -27,6 +27,11 @@ const { open } = require('./lib2');
       to(s, each) { let n = 0; while (G.state === 'run' && P.s < s && n++ < 9000) { if (each) each(); G.update(this.dt); } return G.state === 'run'; },
       wait(sec, each) { for (let t = 0; t < sec && G.state === 'run'; t += this.dt) { if (each) each(); G.update(this.dt); } return G.state === 'run'; },
       lane(l) { P.lane = l; P.x = l * 1.9; },
+      // obstacles as the generator makes them, kept in order along the stretch
+      put(seg, o) { seg.obstacles.push(o); seg.obstacles.sort((a, b) => a.s0 - b.s0); seg.obI = 0; return o; },
+      pad(seg, lane, s, d) { const x = (lane - 1) * 1.9, o = this.put(seg, { type: 'pad', lane, s, s0: s - 0.6, s1: s + 0.6, x0: x - 0.8, x1: x + 0.8, y0: 0, y1: 0.3, d }); if (d) d.pad = o; return o; },
+      pillar(seg, lane, s) { const x = (lane - 1) * 1.9; return this.put(seg, { type: 'pillar', s, s0: s - 0.62, s1: s + 0.62, x0: x - 0.72, x1: x + 0.72, y0: 0, y1: 2.8, lane }); },
+      rubble(seg, lane, s) { const x = (lane - 1) * 1.9; return this.put(seg, { type: 'rubble', s, s0: s - 0.5, s1: s + 0.5, x0: x - 0.8, x1: x + 0.8, y0: 0, y1: 0.6, trip: true, lane }); },
       near(a, b) { return Math.abs(a - b) < 1e-6; },
     };
   });
@@ -90,6 +95,50 @@ const { open } = require('./lib2');
     const G = __mj.Game, P = __mj.Player, seg = T.start(), s0 = P.s + 25; T.deck(seg, 1, s0, s0 + 60, true);
     T.to(s0 + 20); G.bGap = 4; T.wait(0.6, () => { G.bGap = 4; });
     return { ok: Math.abs(__mj.boulder.group.position.y - 2.2) < 0.15, y: __mj.boulder.group.position.y };
+  });
+
+  // ── bounce pads ──
+  await test('pad: it throws him about 3.5 m up, and a totem under the arc does not touch him', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), sp = P.s + 20, pad = T.pad(seg, 1, sp); T.pillar(seg, 1, sp + 4);
+    T.to(sp + 0.5); const off = { vy: P.vy, g: P.grounded, b: P.bouncing };
+    let top = 0; const alive = T.to(sp + 14, () => { top = Math.max(top, P.y); });
+    return { ok: alive && off.vy > 0 && !off.g && off.b === true && top >= 3.3 && top < 3.8 && P.grounded && P.y === 0 && P.bouncing === false && G.run.danger <= 0 && pad.used === true, off, top, y: P.y, alive };
+  });
+  await test('pad then deck: he ends on top at full speed, at 0.62 of it and at 0.4 of it', () => {
+    const G = __mj.Game, P = __mj.Player, got = [];
+    for (const k of [1, 0.62, 0.4]) {
+      const seg = T.start(), sp = P.s + 20, d = T.deck(seg, 1, sp + 3.75, sp + 33.75, false); T.pad(seg, 1, sp, d);
+      const hold = () => { G.run.speed = 11 * k; }, alive = T.to(sp + 13, hold);
+      got.push({ k, alive, y: +P.y.toFixed(2), g: P.grounded, s: +(P.s - sp).toFixed(1) });
+    }
+    return { ok: got.every((r) => r.alive && r.y === 2.2 && r.g), got };
+  });
+  await test('pad: it works once', () => {
+    const P = __mj.Player, seg = T.start(), sp = P.s + 20, pad = T.pad(seg, 1, sp);
+    T.to(sp + 14); const first = pad.used;
+    P.s = sp - 4; seg.obI = 0; let top = 0; T.to(sp + 6, () => { top = Math.max(top, P.y); });
+    return { ok: first === true && top === 0 && P.grounded, first, top };
+  });
+  await test('pad: jumping over it does not set it off', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), sp = P.s + 20, pad = T.pad(seg, 1, sp);
+    T.to(sp - 11 * 0.335); G.input('up'); let top = 0; T.to(sp + 8, () => { top = Math.max(top, P.y); });
+    return { ok: !pad.used && top > 1.7 && top < 2.1 && P.grounded && P.y === 0, used: !!pad.used, top };
+  });
+  await test('pad: a slide across it still bounces him', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), sp = P.s + 20, pad = T.pad(seg, 1, sp);
+    T.to(sp - 2.5); G.input('down'); const sliding = P.slide > 0; T.to(sp + 0.5);
+    return { ok: sliding && pad.used === true && P.bouncing === true && P.slide <= 0 && P.vy > 0, sliding, used: !!pad.used, slide: P.slide };
+  });
+  await test('pad: nothing touches him for a moment after he comes down', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), sp = P.s + 20; T.pad(seg, 1, sp); T.rubble(seg, 1, sp + 11 * (2 * 15.4 / 34) + 1.6);
+    T.to(sp + 3); let n = 0; while (!P.grounded && n++ < 400) G.update(T.dt);
+    const ghost = G.run.ghost, alive = T.to(sp + 16);
+    return { ok: alive && ghost > 0.25 && ghost <= 0.35 && G.run.danger <= 0, ghost, danger: G.run.danger, landed: +(P.s - sp).toFixed(1) };
+  });
+  await test('pad: a stumble just before it does not rob the bounce (he is back up to speed off the pad)', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), sp = P.s + 20; T.pad(seg, 1, sp);
+    T.to(sp - 3); G.run.slow = 0.45; G.run.speed = 11 * 0.62; T.to(sp + 0.5);
+    return { ok: P.bouncing === true && G.run.slow <= 0, slow: G.run.slow, b: P.bouncing };
   });
 
   console.log(errors.filter((e) => !/ReadPixels/.test(e)).join('\n') || 'no errors'); if (errors.filter((e) => !/ReadPixels/.test(e)).length) fails++;
