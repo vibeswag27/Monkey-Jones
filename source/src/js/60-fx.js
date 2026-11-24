@@ -47,10 +47,11 @@ class FX {
   sparkle(x, y, z, n, hex) {
     for (let i = 0; i < n; i++) this.spawn(x, y, z, (Math.random() - 0.5) * 3.4, (Math.random() - 0.2) * 3.4, (Math.random() - 0.5) * 3.4, hex || 0xfff3a8, 0.34 + Math.random() * 0.3, 0.3 + Math.random() * 0.2, 2, -0.6, 1, 1);
   }
-  // One star of a trail: carried along with its maker, it falls behind him at (bx, bz) and is gone before it reaches the camera.
-  trail(x, y, z, bx, bz, hex) {
-    this.spawn(x + (Math.random() - 0.5) * 0.7, y, z + (Math.random() - 0.5) * 0.7, bx + (Math.random() - 0.5) * 1.2, 0.4 + Math.random() * 1.4, bz + (Math.random() - 0.5) * 1.2,
-      hex, 0.2 + Math.random() * 0.2, 0.24 + Math.random() * 0.12, 1.5, -0.5, 1, 1);
+  // One star of a trail (under water, one bubble): carried along with its maker, it falls behind him at (bx, bz) and is gone before it reaches the camera.
+  trail(x, y, z, bx, bz, hex, bubble) {
+    const px = x + (Math.random() - 0.5) * 0.7, pz = z + (Math.random() - 0.5) * 0.7, vx = bx + (Math.random() - 0.5) * 1.2, vz = bz + (Math.random() - 0.5) * 1.2, ttl = 0.24 + Math.random() * 0.12;
+    if (bubble) this.spawn(px, y, pz, vx, 0.6 + Math.random() * 1.2, vz, hex, 0.16 + Math.random() * 0.18, ttl, -1.6, 0.45, 2, 0.95);
+    else this.spawn(px, y, pz, vx, 0.4 + Math.random() * 1.4, vz, hex, 0.2 + Math.random() * 0.2, ttl, 1.5, -0.5, 1, 1);
   }
   // The pieces of something broken by a runner at speed: flung on ahead of him (by up to ax, az more than whatever carries them) and outwards, and gone in half a second.
   shards(x, y, z, n, hex, ax, az) {

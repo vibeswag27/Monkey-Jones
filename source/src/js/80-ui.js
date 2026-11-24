@@ -191,7 +191,11 @@ const UI = (() => {
       const press = (b, fn) => b.addEventListener('click', (e) => { e.preventDefault(); Sound.unlock(); Sound.sfx.click(); fn(); b.blur(); });
       press(el.btnRun, () => Game.startIntro(false));
       press(el.btnPause, () => Game.pause());
-      press(el.btnGold, () => Game.useGold());
+      // The golden button sits low on the right, just where a thumb swipes. So a touch that begins on it is read with the swipes below, and
+      // only one that stays put counts as a press. That leaves this, for a press that comes with no touch at all: the keyboard, or a screen reader.
+      let goldTouch = -1e9;
+      const goldPress = () => { Sound.unlock(); Sound.sfx.click(); Game.useGold(); el.btnGold.blur(); };
+      el.btnGold.addEventListener('click', (e) => { e.preventDefault(); if (e.detail === 0 || performance.now() - goldTouch > 600) goldPress(); }); // (detail 0: no pointer made this click)
       press(el.btnResume, () => Game.resume());
       press(el.btnRestart, () => api.wipe(() => Game.restart()));
       press(el.btnAgain, () => api.wipe(() => Game.restart()));
@@ -214,8 +218,10 @@ const UI = (() => {
       // swipes (touch, pen or a mouse drag)
       let ptr = null;
       stage.addEventListener('pointerdown', (e) => {
-        if (e.target.closest && e.target.closest('button, .card')) return;
-        ptr = { id: e.pointerId, x: e.clientX, y: e.clientY, fired: false, t: performance.now() };
+        const gold = !!(e.target.closest && e.target.closest('#btnGold'));
+        if (!gold && e.target.closest && e.target.closest('button, .card')) return;
+        ptr = { id: e.pointerId, x: e.clientX, y: e.clientY, fired: false, t: performance.now(), gold };
+        if (gold) goldTouch = ptr.t;
       });
       stage.addEventListener('pointermove', (e) => { // one swipe = one move, however long the swipe is
         if (!ptr || e.pointerId !== ptr.id || ptr.fired) return;
@@ -225,12 +231,15 @@ const UI = (() => {
         if (stage.dataset.state === 'chars') { if (Math.abs(dx) > Math.abs(dy)) api.browse(dx < 0 ? 1 : -1); return; }
         Game.input(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up');
       });
-      // A tap is a touch that comes up again within 0.3 s without having turned into a swipe; two taps within 0.35 s set off a golden banana.
+      // A tap is a touch that stays put (under 12 px: a flick too short to be a swipe is not a tap) and comes up again within 0.3 s;
+      // two taps within 0.35 s set off a golden banana. On the golden button one press does it, however long it is held.
       let tapAt = -1e9;
       const end = (e) => {
         if (ptr && e.pointerId === ptr.id) {
-          const now = performance.now(), tap = e.type === 'pointerup' && !ptr.fired && now - ptr.t < 300;
-          if (tap && now - tapAt < 350) { tapAt = -1e9; Game.useGold(); } else tapAt = tap ? now : -1e9;
+          const now = performance.now(), still = e.type === 'pointerup' && !ptr.fired && Math.abs(e.clientX - ptr.x) < 12 && Math.abs(e.clientY - ptr.y) < 12;
+          const tap = still && !ptr.gold && now - ptr.t < 300;
+          if (ptr.gold) { goldTouch = now; tapAt = -1e9; if (still) goldPress(); }
+          else if (tap && now - tapAt < 350) { tapAt = -1e9; Game.useGold(); } else tapAt = tap ? now : -1e9;
           ptr = null;
         }
         Sound.unlock();

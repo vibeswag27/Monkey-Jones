@@ -496,8 +496,9 @@ const Game = {
   takeCrate(p) {
     const d = Save.data, P = Player;
     p.got = true; if (p.mesh) p.mesh.visible = false;
-    if (d.gold < GOLD_MAX) { d.gold++; Save.store(); }
-    UI.gold(); UI.toast('Golden banana!'); Sound.sfx.crate(); monkey.setExpr('happy', 0.9); buzz(30);
+    const room = d.gold < GOLD_MAX;
+    if (room) { d.gold++; Save.store(); }
+    UI.gold(); UI.toast(room ? '+1 Golden Banana' : 'No room for more'); Sound.sfx.crate(); monkey.setExpr('happy', 0.9); buzz(30);
     const dir = P.seg.dir, v = this.run.speed, was = [fx.cx, fx.cz]; // its splinters and its sparkle fly on with him, whatever his speed, rather than hang where the camera is about to be
     fx.carry(dir.fx * v, dir.fz * v);
     fx.shards(P.wx, P.y + 0.6, P.wz, 12, P.seg.sea ? 0x7a5238 : 0xcf9150, dir.fx * 8, dir.fz * 8); fx.sparkle(P.wx, P.y + 1.1, P.wz, 16, 0xffe45c);
@@ -563,7 +564,7 @@ const Game = {
       const d = P.seg.dir, vs = Math.min(GOLD_K * vL, GOLD_VMAX) - 9, step = Math.min(dt, 0.1); // he trails gold: about 36 stars a second whatever the frame rate, each falling behind at 9 m/s (vs: its speed over the ground)
       for (run.trail += step * 36; run.trail >= 1; run.trail--) {
         const back = ((run.speed - vs) * Math.random() + vs) * step; // somewhere he was during this frame, less the step the star is about to take: at full speed it is never born ahead of him
-        fx.trail(P.wx - d.fx * back, P.y + 0.1 + Math.random() * 1.0, P.wz - d.fz * back, -d.fx * 9, -d.fz * 9, Math.random() < 0.3 ? 0xffffff : 0xffe45c);
+        fx.trail(P.wx - d.fx * back, P.y + 0.1 + Math.random() * 1.0, P.wz - d.fz * back, -d.fx * 9, -d.fz * 9, Math.random() < 0.3 ? 0xffffff : 0xffe45c, Tide.wet); // (stars; under water, golden bubbles)
       }
       if (run.gold > 0 && run.gold < 1.5) { // its last moments: the gold flickers (under three times a second, and not at all for a player who has asked for less motion), and a tick counts them down
         monkey.setGold(REDUCED || Math.floor(run.gold * 6) % 2 === 0);

@@ -61,7 +61,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cu
 /* the golden banana: a round button low on the right where a thumb finds it, with how many are left */
 .gold-btn{position:absolute;right:max(14px,env(safe-area-inset-right));bottom:max(26px,calc(env(safe-area-inset-bottom) + 16px));width:68px;height:68px;border-radius:50%;
   background:radial-gradient(circle at 35% 30%,#FFF3B0 0,#FFD23F 45%,#F2A20C 100%);border:3px solid var(--ink);box-shadow:0 5px 0 var(--ink);display:grid;place-items:center;
-  visibility:hidden;transition:transform .06s,box-shadow .06s,opacity .2s}
+  visibility:hidden;transition:transform .06s,box-shadow .06s,opacity .2s;touch-action:none}
 .gold-btn[hidden]{display:none}
 [data-state="intro"] .gold-btn,[data-state="run"] .gold-btn,[data-state="count"] .gold-btn,[data-state="pause"] .gold-btn{visibility:visible}
 .gold-btn:active{transform:translateY(3px);box-shadow:0 2px 0 var(--ink)}

@@ -68,7 +68,10 @@ const rig = require('./rig');
     const a = G.useGold();
     return { ok: a && G.run.danger <= 0 && G.run.slow <= 0 && __mj.Player.stumbleT < 0, danger: G.run.danger, slow: G.run.slow };
   });
-  const fresh = (gold) => page.evaluate((gold) => { T.start(); __mj.Save.data.gold = gold; __mj.UI.gold(); }, gold);
+  const fresh = async (gold) => {                                                        // a fresh run on an empty stretch with `gold` in hand, and nothing left on screen from before
+    await page.evaluate((gold) => { T.start(); __mj.Save.data.gold = gold; __mj.UI.gold(); }, gold);
+    await page.waitForFunction(() => [...document.querySelectorAll('.screen')].every((e) => getComputedStyle(e).visibility === 'hidden'), null, { timeout: 5000 }); // (a screen takes 0.2 s of real time to fade, and can be touched until it has)
+  };
   const state = () => page.evaluate(() => ({ on: __mj.Game.run.gold > 0, left: __mj.Save.data.gold, shown: !!document.getElementById('btnGold').offsetParent, count: document.getElementById('goldCount').textContent }));
   await scene('use: refused on the pause screen, during the 3-2-1 after it, and once the run is over, whether by the golden button, a double tap or the G key (nothing is spent)', async () => {
     const tryAll = async () => {
@@ -103,6 +106,36 @@ const rig = require('./rig');
     await fresh(5); await page.touchscreen.tap(195, 430); await page.waitForTimeout(600); await page.touchscreen.tap(195, 430); await page.waitForTimeout(450); got.slow = await state();
     await fresh(5); await page.mouse.move(150, 430); await page.mouse.down(); await page.mouse.move(230, 432, { steps: 4 }); await page.mouse.up(); await page.touchscreen.tap(195, 430); await page.waitForTimeout(450); got.swipe = await state();
     return { ok: !got.one.on && got.one.left === 5 && !got.slow.on && got.slow.left === 5 && !got.swipe.on && got.swipe.left === 5, got };
+  });
+  const drag = async (x, y, dx, dy) => { await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + dx, y + dy, { steps: 4 }); await page.mouse.up(); };
+  const btnAt = async () => {                                                            // the middle of the golden button, once nothing else is in front of it (the home screen takes a moment of real time to fade)
+    const mid = () => { const r = document.getElementById('btnGold').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; };
+    await page.waitForFunction('(' + mid.toString() + ')().x > 0 && (() => { const m = (' + mid.toString() + ')(), e = document.elementFromPoint(m.x, m.y); return !!(e && e.closest("#btnGold")); })()', null, { timeout: 5000 });
+    return page.evaluate(mid);
+  };
+  await scene('double tap: two quick flicks too short to be swipes are not a double tap (a tap is a touch that stays put: under 12 px)', async () => {
+    await fresh(5);
+    await drag(195, 430, 0, -16); await page.waitForTimeout(90); await drag(195, 430, 0, -16); await page.waitForTimeout(120);
+    const flicks = await state(), air = await page.evaluate(() => { __mj.Game.update(1 / 60); return !__mj.Player.grounded; });
+    await fresh(5); await drag(195, 430, 3, -4); await page.waitForTimeout(90); await drag(196, 431, -2, 5); const wobbly = await state();   // a finger never lands quite still
+    return { ok: !flicks.on && flicks.left === 5 && !air && wobbly.on && wobbly.left === 4, flicks, air, wobbly };
+  });
+  await scene('button: a swipe that starts on the golden button is still a swipe (he jumps, he changes lane) and spends nothing, even if it ends on the button', async () => {
+    const got = {};
+    await fresh(5); let at = await btnAt(); await drag(at.x, at.y, 0, -80);
+    const air = () => page.evaluate(() => { __mj.Game.update(1 / 60); return { air: !__mj.Player.grounded }; });              // (a jump is taken on the next frame)
+    got.long = Object.assign(await state(), await air());
+    await fresh(5); at = await btnAt(); await drag(at.x, at.y + 8, 0, -26);                                                             // up and down inside the button itself
+    got.short = Object.assign(await state(), await air());
+    await fresh(5); at = await btnAt(); await drag(at.x, at.y, -80, 0);
+    got.side = Object.assign(await state(), await page.evaluate(() => ({ lane: __mj.Player.lane })));
+    return { ok: got.long.air && !got.long.on && got.long.left === 5 && got.short.air && !got.short.on && got.short.left === 5 && got.side.lane === -1 && !got.side.on && got.side.left === 5, got };
+  });
+  await scene('button: it answers the keyboard too (Enter or Space with it in focus), once', async () => {
+    await fresh(3);
+    await page.evaluate(() => document.getElementById('btnGold').focus()); await page.keyboard.press('Enter'); await page.waitForTimeout(60);
+    const a = await state();
+    return { ok: a.on && a.left === 2, a };
   });
   await scene('button and key: a tap on the golden button sets one off, and so does the G key; the button hides when none are left', async () => {
     const got = {};
@@ -282,12 +315,12 @@ const rig = require('./rig');
     const r = await page.evaluate(() => {
       const G = __mj.Game, P = __mj.Player, d = __mj.Save.data, seg = T.start(), s = P.s;
       const a = T.token(seg, 'crate', 1, s + 15), b = T.token(seg, 'crate', 2, s + 30), c = T.token(seg, 'crate', 1, s + 45);
-      T.to(s + 20); const one = { gold: d.gold, got: a.got, stored: JSON.parse(localStorage.getItem('monkeyjones.v1')).gold };
+      T.to(s + 20); const one = { gold: d.gold, got: a.got, stored: JSON.parse(localStorage.getItem('monkeyjones.v1')).gold, said: document.getElementById('toast').textContent };
       T.to(s + 35); const two = { gold: d.gold, got: b.got };
       d.gold = 99; const alive = T.to(s + 50);
-      return { alive, one, two, three: { gold: d.gold, got: c.got }, count: document.getElementById('goldCount').textContent };
+      return { alive, one, two, three: { gold: d.gold, got: c.got, said: document.getElementById('toast').textContent }, count: document.getElementById('goldCount').textContent };
     });
-    return { ok: r.alive && r.one.gold === 6 && r.one.got && r.one.stored === 6 && r.two.gold === 6 && !r.two.got && r.three.gold === 99 && r.three.got && r.count === '99', r };
+    return { ok: r.alive && r.one.gold === 6 && r.one.got && r.one.stored === 6 && r.one.said === '+1 Golden Banana' && r.two.gold === 6 && !r.two.got && r.three.gold === 99 && r.three.got && r.count === '99' && !/\+1/.test(r.three.said), r };
   });
   await test('crate: he does not run past one at gold\'s speed on a slow frame (58 m/s, 20 frames a second)', () => {
     const G = __mj.Game, P = __mj.Player, d = __mj.Save.data, seg = T.start('ruins', 12), s = P.s, dt0 = T.dt;
@@ -350,6 +383,19 @@ const rig = require('./rig');
     fx.trail = real;
     const fine = (g) => g.straight && g.n >= 25 && g.n <= 50 && g.alive > 0 && g.least > -1.2 && g.most < 4.5;
     return { ok: fine(got.fast) && fine(got.slow) && Math.abs(got.fast.n - got.slow.n) <= 6, got };
+  });
+  await test('look: on land his trail is stars; under water it is golden bubbles', () => {
+    const m = __mj, fx = m.fx, real = fx.spawn, got = {};
+    for (const map of ['ruins', 'tide']) {
+      T.start(map, 2); T.wait(0.3); fx.clear();
+      const kinds = {}; let on = false;
+      fx.spawn = function (...a) { if (on) { const k = a[11] || 0; kinds[k] = (kinds[k] || 0) + 1; } return real.apply(fx, a); };
+      const t0 = fx.trail; fx.trail = function (...a) { on = true; const r = t0.apply(fx, a); on = false; return r; };   // (only what the trail itself throws off)
+      T.gold(5); T.wait(1);
+      fx.spawn = real; fx.trail = t0; got[map] = kinds;
+    }
+    m.Save.data.map = 'ruins';
+    return { ok: got.ruins[1] > 20 && !got.ruins[2] && got.tide[2] > 20 && !got.tide[1], got };
   });
   await test('look: nothing he throws off while gold hangs in the air for the camera to run into: smashed pieces, dust, sparkle and his trail all keep ahead of it (60 and 20 frames a second, levels 3 and 12)', () => {
     const G = __mj.Game, m = __mj, P = m.Player, fx = m.fx, got = [];
