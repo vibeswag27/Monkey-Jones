@@ -95,6 +95,78 @@ const rig = require('./rig');
     return { ok: r.shown && r.text === '7' && r.w <= r.vw, r };
   });
 
+  // ── unstoppable ──
+  await test('gold: he runs through a totem, a beam, a log, rubble, a sweeper and a bobber; each is knocked away and scores 50', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), s = P.s; G.goldSaves = 0;
+    const hit = [T.pillar(seg, 1, s + 20), T.beam(seg, s + 32), T.log(seg, s + 44), T.rubble(seg, 1, s + 56), T.mover(seg, 'side', 1, s + 68, 0, 0), T.mover(seg, 'bob', 1, s + 80, 0, 0)];
+    T.gold(30); const base = G.run.score - G.run.dist;
+    const alive = T.to(s + 86), bonus = Math.round(G.run.score - G.run.dist - base);
+    return { ok: alive && hit.every((o) => o.gone) && bonus === 300 && G.run.danger <= 0 && G.goldSaves === 0 && G.run.gold > 0, alive, gone: hit.map((o) => !!o.gone), bonus, saves: G.goldSaves };
+  });
+  await test('gold: what he does not touch is left standing (a totem in the next lane, a bobber high overhead, a log he jumps)', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), s = P.s;
+    const a = T.pillar(seg, 2, s + 20), b = T.mover(seg, 'bob', 1, s + 32, 0, Math.PI), c = T.log(seg, s + 60);
+    T.gold(30); T.to(s + 36); T.to(s + 60 - G.run.speed * 0.335); G.input('up'); const alive = T.to(s + 75);
+    return { ok: alive && !a.gone && !b.gone && !c.gone, gone: [!!a.gone, !!b.gone, !!c.gone] };
+  });
+  await test('gold: a wall with no steps lifts him onto its top, and a shield he was carrying is not spent on it', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), s0 = P.s + 25; T.deck(seg, 1, s0, s0 + 40, false); G.goldSaves = 0;
+    G.run.shield = true; G.run.shieldT = 20; T.gold(30); const alive = T.to(s0 + 8);
+    return { ok: alive && T.near(P.y, 2.2) && P.grounded && G.run.shield === true && G.goldSaves === 0, alive, y: P.y, shield: G.run.shield };
+  });
+  await test('gold: gaps do not stop him: a gap right across the path, and a bridged gap away from its platform, are both crossed', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), s = P.s; G.goldSaves = 0;
+    T.hole(seg, s + 20, 13); T.bridge(seg, s + 45, 13, 0, true);
+    T.gold(30); let low = 0; const alive = T.to(s + 62, () => { low = Math.min(low, P.y); });
+    return { ok: alive && low === 0 && P.y === 0 && G.goldSaves === 0, alive, low };
+  });
+  await test('gold: a bounce pad does not fire', () => {
+    const P = __mj.Player, seg = T.start(), sp = P.s + 20, pad = T.pad(seg, 1, sp);
+    T.gold(30); let top = 0; T.to(sp + 6, () => { top = Math.max(top, P.y); });
+    return { ok: !pad.used && top === 0 && P.grounded, used: !!pad.used, top };
+  });
+  await test('gold: corners take themselves: twelve seconds with no hand on the controls, starting at a T, through whatever the track holds', () => {
+    const G = __mj.Game, P = __mj.Player, m = __mj;
+    let tries = 0; do { m.Save.data.runs = 5; m.Save.data.map = 'ruins'; m.Seg.startDepth = 8; G.restart(); m.Seg.startDepth = 0; let t = 0; while (G.state !== 'run' && t < 5) { G.update(T.dt); t += T.dt; } } while (P.seg.jt !== 'T' && ++tries < 60);
+    const jt = P.seg.jt; G.goldSaves = 0; T.gold(60);
+    const alive = T.wait(12);
+    return { ok: jt === 'T' && alive && G.run.turns >= 3 && G.goldSaves === 0 && G.run.danger <= 0, jt, alive, turns: G.run.turns, saves: G.goldSaves, state: G.state, death: G.death && G.death.type };
+  });
+  await test('gold: three times the level speed (33 m/s at level 1), never more than 58 (level 12)', () => {
+    const G = __mj.Game, got = [];
+    for (const level of [1, 12]) {
+      T.start('ruins', level); T.gold(60); let top = 0; T.wait(0.45); const early = G.run.speed; T.wait(2, () => { top = Math.max(top, G.run.speed); });
+      got.push({ level, early: +early.toFixed(1), speed: +G.run.speed.toFixed(2), top: +top.toFixed(2), alive: G.state === 'run' });
+    }
+    return { ok: got[0].alive && got[1].alive && got[0].speed > 32.6 && got[0].top <= 33.001 && got[0].early > 29 && got[1].speed > 57.4 && got[1].top <= 58.001, got };
+  });
+  await test('gold: set off at an awkward moment (in mid-air over a gap, at the brink of a fall, mid-slide, mid-bounce, in danger) he lives', () => {
+    const G = __mj.Game, P = __mj.Player, got = {};
+    const live = (name) => { const alive = T.wait(4); got[name] = { alive, saves: G.goldSaves, y: +P.y.toFixed(2) }; };
+    let seg = T.start(), s = P.s; G.goldSaves = 0; T.hole(seg, s + 20, 14); T.to(s + 17.5); G.input('up'); T.to(s + 23); got.airborne = !P.grounded; T.gold(30); live('midair');
+    seg = T.start(); s = P.s; G.goldSaves = 0; T.hole(seg, s + 20, 14); let n = 0; while (G.state === 'run' && !(P.coyote > 0 && !P.grounded) && n++ < 600) G.update(T.dt); got.brinkAt = +(P.s - s).toFixed(1); T.gold(30); live('brink');
+    seg = T.start(); s = P.s; G.goldSaves = 0; T.beam(seg, s + 12); G.input('down'); T.wait(0.1); got.sliding = P.slide > 0; T.gold(30); live('slide');
+    seg = T.start(); s = P.s; G.goldSaves = 0; T.pad(seg, 1, s + 15); T.pillar(seg, 1, s + 20); T.to(s + 16.5); got.bouncing = P.bouncing; T.gold(30); live('bounce');
+    seg = T.start(); s = P.s; G.goldSaves = 0; T.rubble(seg, 1, s + 12); G.run.danger = 5; T.gold(30); live('danger');
+    const ok = got.airborne && got.sliding && got.bouncing && got.brinkAt > 19 && ['midair', 'brink', 'slide', 'bounce', 'danger'].every((k) => got[k].alive && got[k].saves === 0);
+    return { ok, got };
+  });
+  await test('gold: a rocket token is left where it is; any other token is still picked up', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), s = P.s, r = T.token(seg, 'rocket', 1, s + 20), mg = T.token(seg, 'magnet', 1, s + 40);
+    T.gold(30); const alive = T.to(s + 46);
+    return { ok: alive && !r.got && !P.flying && mg.got && G.run.magnet > 0, rocket: r.got, flying: P.flying, magnet: mg.got };
+  });
+  await test('gold: the level is held: set off on the last stretch of level 1, three corners later it is still level 1 and no stretch ahead is any deeper', () => {
+    const G = __mj.Game, P = __mj.Player, m = __mj;
+    m.Save.data.runs = 5; m.Save.data.map = 'ruins'; m.Seg.startDepth = 3; G.restart(); m.Seg.startDepth = 0; let t = 0; while (G.state !== 'run' && t < 5) { G.update(T.dt); t += T.dt; }
+    const d0 = P.seg.depth, before = [P.seg.kids.L, P.seg.kids.R].filter(Boolean).map((k) => k.depth);
+    G.goldSaves = 0; T.gold(60); const depths = [], levels = new Set(); let n = 0;
+    while (G.state === 'run' && G.run.turns < 3 && n++ < 3000) { G.update(T.dt); levels.add(G.run.level); if (depths[depths.length - 1] !== P.seg.depth || depths.length < G.run.turns + 1) depths[G.run.turns] = P.seg.depth; }
+    const ahead = []; const walk = (seg) => { if (!seg || seg.dead) return; ahead.push(seg.depth); walk(seg.kids.L); walk(seg.kids.R); }; walk(P.seg);
+    return { ok: d0 === 3 && before.every((d) => d === 4) && G.state === 'run' && G.run.turns === 3 && [...levels].join() === '1' && depths.every((d) => d === 3) && ahead.every((d) => d === 3) && m.world.hold === true && G.goldSaves === 0,
+      d0, before, turns: G.run.turns, levels: [...levels], depths, ahead, hold: m.world.hold };
+  });
+
   const bad = errors.filter((e) => !/ReadPixels/.test(e));
   console.log(bad.join('\n') || 'no errors');
   console.log(fails || bad.length ? `FAIL: ${fails} of ${ran}` : `PASS: all ${ran} golden banana rules hold`);

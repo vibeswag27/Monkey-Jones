@@ -142,7 +142,7 @@ const Player = {
     const nl = clamp(this.lane + d, -1, 1);
     if (nl === this.lane) { this.lean = -d * 0.3; return; }
     const O = this.seg.obstacles, li = nl + 1;
-    for (let i = this.seg.obI; i < O.length && !this.flying && Game.run.ghost <= 0; i++) { // a totem right beside you? you bounce off it
+    for (let i = this.seg.obI; i < O.length && !this.flying && Game.run.ghost <= 0 && !Game.golden(); i++) { // a totem right beside you? you bounce off it (unless you are gold: then it is the totem's problem)
       const o = O[i];
       if (o.s0 > this.s + 1.0) break;
       if (!o.gone && o.type === 'pillar' && o.lane === li && o.s1 > this.s - 0.7 && this.y < o.y1 - 0.3) { this.lean = d * 0.55; Game.stumble(o); return; }
@@ -214,7 +214,11 @@ const Player = {
     Sound.sfx.turn(); Game.onTurn();
     return true;
   },
-  die(type) { if (this.dead) return; this.dead = true; Game.kill(type); },
+  die(type) {
+    if (this.dead) return;
+    if (Game.golden()) { Game.goldSaves++; return; } // gold never kills: the last line of defence, which should never be reached
+    this.dead = true; Game.kill(type);
+  },
 
   collide() {
     const seg = this.seg, O = seg.obstacles, s = this.s, x = this.x, y = this.y;
@@ -235,10 +239,17 @@ const Player = {
     }
     while (seg.obI < O.length && O[seg.obI].s1 < s - 1.2) seg.obI++;
     const ghost = Game.run.ghost > 0 || this.bouncing; // just landed from a flight, or in the air off a bounce pad: nothing can touch him
+    const golden = Game.golden();
     for (let i = seg.obI; i < O.length; i++) {
       const o = O[i];
       if (o.s0 > s + 0.3) break;
       if (o.gone || o.s1 < s - 0.3) continue;
+      if (golden) { // unstoppable: whatever he would have run into is knocked flying instead (and pads stay asleep under him)
+        if (o.type === 'pad') continue;
+        if (o.type === 'mover') moverBox(o, Game.time);
+        if (this.x + 0.36 > o.x0 && this.x - 0.36 < o.x1 && y < o.y1 - 0.14 && y + (this.slide > 0 ? 0.78 : 1.45) > o.y0 + 0.08) Game.goldSmash(o);
+        continue;
+      }
       const hitX = x + 0.36 > o.x0 && x - 0.36 < o.x1;
       if (o.type === 'pad') { // a bounce pad goes off under anyone who sets foot on it (jump over it and it stays asleep)
         if (!o.used && hitX && this.grounded && this.y <= this.floor + 0.02 && s >= o.s0 && s <= o.s1) this.bounce(o);
@@ -259,17 +270,17 @@ const Player = {
   },
 
   update(dt) {
-    const run = Game.run;
+    const run = Game.run, golden = Game.golden(), auto = this.flying || golden;
     let left = run.speed * dt;
     while (left > 0 && !this.dead) { // small steps, so nothing is skipped at speed
       const step = Math.min(left, 0.4); left -= step; this.s += step;
-      if (this.flying && !this.turnQ && this.s > this.seg.len - LANE_W - 0.6) this.turnQ = this.seg.jt === 'T' ? (Math.random() < 0.5 ? 'L' : 'R') : this.seg.jt; // the rocket steers itself round corners
+      if (auto && !this.turnQ && this.s > this.seg.len - LANE_W - 0.6) this.turnQ = this.seg.jt === 'T' ? (Math.random() < 0.5 ? 'L' : 'R') : this.seg.jt; // the rocket steers itself round corners, and so does gold
       if (this.turnQ) this.tryTurn();
       if (!this.flying) this.collide();
     }
     if (this.dead) return;
     const seg = this.seg;
-    if (this.s > seg.len + HJ - 0.5) { if (this.flying) this.s = seg.len + HJ - 0.5; else { this.die('bonk'); return; } }
+    if (this.s > seg.len + HJ - 0.5) { if (auto) this.s = seg.len + HJ - 0.5; else { this.die('bonk'); return; } }
 
     const tx = this.lane * LANE_W;
     this.x = damp(this.x, tx, 17, dt);
@@ -283,7 +294,7 @@ const Player = {
       this.place();
       return;
     }
-    const ghost = run.ghost > 0, fy = this.floor = seg.floorY(this.s, this.x); // the floor under him: the path, a flight of steps, or the top of a deck
+    const ghost = run.ghost > 0 || golden, fy = this.floor = seg.floorY(this.s, this.x); // the floor under him: the path, a flight of steps, or the top of a deck (a ghost, or gold, runs on over a gap)
     const over = !ghost && fy === 0 && this.y <= 0.02 && seg.overHole(this.s, this.x);
     if (this.grounded) {
       if (over) { this.grounded = false; this.vy = 0; this.coyote = 0.09; this.slide = 0; }
@@ -394,6 +405,7 @@ const Game = {
     d.gold--; d.goldUsed = true; Save.store();
     run.gold = run.max.gold = powerTime('gold'); run.goldOver = 0;
     run.danger = 0; run.slow = 0; run.invuln = 0; P.stumbleT = -1; // whatever trouble he was in, he is out of it
+    world.setHold(true);                                           // the run gets no deeper while he is gold
     UI.gold();
     return true;
   },
@@ -403,14 +415,14 @@ const Game = {
     const run = this.run, seg = Player.seg; run.turns++;
     if (Player.flying) for (const t of ['L', 'R']) if (seg.kids[t]) world.addSky(seg.kids[t], HJ + 6);
     if (this.hintOn >= 0) { UI.hint(null); this.hintOn = -1; }
-    if (seg.level > run.level) { // every corner that starts a new level: faster, tighter, and worth more
+    if (seg.level > run.level && !this.golden()) { // every corner that starts a new level: faster, tighter, and worth more (one that falls due while he is gold waits for the first corner after)
       run.level = seg.level; run.mult = Math.min(10, run.level);
       UI.levelUp(run.level); Sound.sfx.level();
     }
   },
   stumble(o) {
     const run = this.run, P = Player;
-    if (run.invuln > 0 || run.ghost > 0 || P.flying) return;
+    if (run.invuln > 0 || run.ghost > 0 || P.flying || this.golden()) return;
     if (run.shield) { this.popShield(); return; }
     if (run.danger > 0 && this.state === 'run') { P.die('flat'); return; }
     run.danger = 5.5; run.slow = 0.45; run.invuln = 0.75; P.stumbleT = 0;
@@ -426,14 +438,28 @@ const Game = {
   hitDeck(d) {
     const run = this.run, P = Player;
     if (P.flying) return;
-    if (!run.shield && run.ghost <= 0 && !P.bouncing) { P.die('bonk'); return; }
-    if (run.shield && run.ghost <= 0 && !P.bouncing) this.popShield();
+    const charmed = run.ghost > 0 || P.bouncing || this.golden();
+    if (!run.shield && !charmed) { P.die('bonk'); return; }
+    if (run.shield && !charmed) this.popShield();
     P.y = d.h; P.vy = 0; P.grounded = true; P.coyote = 0; P.bouncing = false;
     monkey.bounce(1.25); Cam.kick(0.5); Sound.sfx.land(); fx.sparkle(P.wx, d.h + 1, P.wz, 8, 0xffe45c);
   },
+  // While he is gold, whatever he runs into is knocked flying, and scores.
+  goldSmash(o) {
+    if (o.gone) return;
+    const run = this.run, P = Player, seg = P.seg, ox = clamp(P.x, o.x0, o.x1);
+    world.smash(seg, o);
+    run.smashed = (run.smashed || 0) + 1; run.score += SMASH_SCORE * run.mult * (run.dbl > 0 ? 2 : 1);
+    fx.debris(seg.wx(o.s, ox), P.floor + 0.5, seg.wz(o.s, ox), 9, o.type === 'log' || o.skin === 'mask' ? ENV.wood : o.skin === 'crab' ? 0xff6a4a : o.skin === 'jelly' ? 0xff8fc7 : 0x9fb0b8);
+    fx.sparkle(seg.wx(o.s, ox), P.floor + 1, seg.wz(o.s, ox), 5, 0xffe45c);
+    if (this.time - (this.smashAt || 0) > 0.09) { this.smashAt = this.time; Sound.sfx.smash(); Cam.kick(0.3); buzz(12); }
+  },
+  golden() { const r = this.run; return !!r && (r.gold > 0 || r.goldOver > 0); }, // is gold on (or being held on through a corner)?
+  // Gold is over. (Task 4 gives it its proper ending.)
+  endGold() { world.setHold(false); },
   hitSolid(o) {
     const run = this.run, P = Player;
-    if (run.ghost > 0 || P.flying) return;
+    if (run.ghost > 0 || P.flying || this.golden()) return;
     if (run.shield) {
       this.popShield();
       world.smash(P.seg, o); Sound.sfx.smash(); Cam.kick(0.7);
@@ -483,16 +509,18 @@ const Game = {
       b.pull += dt * 5.5;
       if (b.pull >= 1) { this.grab(b); run.pulled.splice(i, 1); }
     }
-    for (const p of seg.pickups) if (!p.got && Math.abs(p.s - s) < 1.15 && Math.abs(p.x - P.x) < 0.95 && P.y < 2.4) this.take(p);
+    for (const p of seg.pickups) if (!p.got && Math.abs(p.s - s) < 1.15 && Math.abs(p.x - P.x) < 0.95 && P.y < 2.4 && !(p.kind === 'rocket' && this.golden())) this.take(p); // (gold and the rocket do not mix: its token is left where it is)
   },
 
   // ── per-frame ──
   updateRun(dt) {
     const run = this.run, P = Player;
     if (run.slow > 0) run.slow -= dt;
-    run.speed = damp(run.speed, levelSpeed(run.level) * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), 5, dt);
+    const golden = this.golden(), vL = levelSpeed(run.level);
+    run.speed = damp(run.speed, golden ? Math.min(GOLD_K * vL, GOLD_VMAX) : vL * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), golden ? 6 : 5, dt);
     P.update(dt);
     if (P.dead) return;
+    if (run.gold > 0) { run.gold -= dt; if (run.gold <= 0) { run.gold = 0; this.endGold(); } }
     run.dist += run.speed * dt;
     run.score += run.speed * dt * run.mult * (run.dbl > 0 ? 2 : 1);
     if (run.danger > 0) run.danger -= dt;
@@ -533,7 +561,7 @@ const Game = {
         else fx.spawn(_look.x, _look.y, _look.z, d.fx * back + (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, d.fz * back + (Math.random() - 0.5) * 1.2, Math.random() < 0.5 ? 0xff8a1f : 0xffe066, 0.3, 0.12 + Math.random() * 0.08, 0, -0.8, 0, 0.95);
       }
     }
-    this.bGap = damp(this.bGap, run.danger > 0 ? this.closeGap() : 15, run.danger > 0 ? 7 : 1.1, dt);
+    this.bGap = damp(this.bGap, golden ? 40 : run.danger > 0 ? this.closeGap() : 15, run.danger > 0 ? 7 : 1.1, dt); // (left far behind while he is gold)
     UI.danger(run.danger > 0);
   },
 

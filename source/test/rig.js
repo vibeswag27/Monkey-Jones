@@ -37,6 +37,12 @@ module.exports = async (page) => {
         seg.movers.push(o); return this.put(seg, o);
       },
       rubble(seg, lane, s) { const x = (lane - 1) * 1.9; return this.put(seg, { type: 'rubble', s, s0: s - 0.5, s1: s + 0.5, x0: x - 0.8, x1: x + 0.8, y0: 0, y1: 0.6, trip: true, lane }); },
+      beam(seg, s) { return this.put(seg, { type: 'beam', s, s0: s - 0.5, s1: s + 0.5, x0: -99, x1: 99, y0: 1.18, y1: 2.42 }); },
+      log(seg, s) { return this.put(seg, { type: 'log', s, s0: s - 0.42, s1: s + 0.42, x0: -2.85, x1: 2.85, y0: 0, y1: 0.82, trip: true, l0: 0, l1: 2 }); },
+      hole(seg, s0, len) { const h = { s0, s1: s0 + len, x0: -99, x1: 99 }; seg.holes.push(h); return h; },            // a gap right across the path
+      token(seg, kind, lane, s) { const p = { kind, s, x: (lane - 1) * 1.9, y: 1.15, got: false, sprite: null }; seg.pickups.push(p); return p; },
+      // set off a golden banana (with one in hand whatever the save says), optionally lasting `secs`
+      gold(secs) { m.Save.data.gold = Math.max(1, m.Save.data.gold); const ok = G.useGold(); if (ok && secs) G.run.gold = G.run.max.gold = secs; return ok; },
       near(a, b) { return Math.abs(a - b) < 1e-6; },
     };
   });

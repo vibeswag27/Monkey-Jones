@@ -542,7 +542,7 @@ class World {
     if (this.first) this._disposeTree(this.root_seg());
     this.queue.length = 0; this.tutorial = !!tutorial;
     this.seed = seed >>> 0; this.rng = makeRng(this.seed);
-    this.nextPickupAt = 170; this.skyOn = false; this.wet = false;
+    this.nextPickupAt = 170; this.skyOn = false; this.wet = false; this.hold = false;
     this.first = this.cur = this._make(null, null);
     this.prev = null;
     this.ensureAhead();
@@ -552,12 +552,20 @@ class World {
 
   _make(parent, turn) {
     const seg = new Seg(parent, turn);
+    if (this.hold && parent) { seg.depth = parent.depth; seg.level = parent.level; } // made while the level is held: no deeper into the run than the stretch before
     genSegment(seg, this);
     if (this.skyOn) this.addSky(seg, seg.floorStart + 6);
     buildSegment(seg, this);
     this.root.add(seg.group);
     if (parent) parent.kids[turn] = seg;
     return seg;
+  }
+  // Hold the level (while he is gold): every stretch ahead, built already or yet to be, counts as being as deep into the run as the one he is on.
+  setHold(on) {
+    this.hold = !!on;
+    if (!on || !this.cur) return;
+    const level = (seg, d) => { if (!seg || seg.dead) return; seg.depth = d; seg.level = levelOf(d); level(seg.kids.L, d); level(seg.kids.R, d); };
+    level(this.cur.kids.L, this.cur.depth); level(this.cur.kids.R, this.cur.depth);
   }
   _want(seg) {
     const turns = seg.jt === 'T' ? ['L', 'R'] : [seg.jt];
@@ -628,6 +636,8 @@ class World {
     o.gone = true;
     const wipe = (mesh, r) => { if (!mesh || !r || r[1] <= r[0]) return; const a = mesh.geometry.attributes.position; a.array.fill(0, r[0] * 3, r[1] * 3); a.needsUpdate = true; };
     wipe(seg.obMesh, o.rOb); wipe(seg.olMesh, o.rOl); wipe(seg.glMesh, o.rGl);
+    if (o.mesh) o.mesh.visible = false; // (a mover has a mesh of its own)
+    if (o.vine) o.vine.visible = false;
   }
 
   update(dt, t, px, py, pz) {
