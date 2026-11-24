@@ -70,6 +70,27 @@ const rig = require('./rig');
   });
   const fresh = (gold) => page.evaluate((gold) => { T.start(); __mj.Save.data.gold = gold; __mj.UI.gold(); }, gold);
   const state = () => page.evaluate(() => ({ on: __mj.Game.run.gold > 0, left: __mj.Save.data.gold, shown: !!document.getElementById('btnGold').offsetParent, count: document.getElementById('goldCount').textContent }));
+  await scene('use: refused on the pause screen, during the 3-2-1 after it, and once the run is over, whether by the golden button, a double tap or the G key (nothing is spent)', async () => {
+    const tryAll = async () => {
+      const at = await page.evaluate(() => {                                         // the button's middle, and a spot on the screen that is no button at all
+        const r = document.getElementById('btnGold').getBoundingClientRect(); let free = null;
+        for (let y = 700; y > 60 && !free; y -= 40) for (const x of [60, 195, 330]) { const e = document.elementFromPoint(x, y); if (e && !e.closest('button') && !e.closest('#btnGold')) { free = { x, y }; break; } }
+        return { bx: r.x + r.width / 2, by: r.y + r.height / 2, seen: r.width > 0 && getComputedStyle(document.getElementById('btnGold')).visibility === 'visible', free };
+      });
+      if (at.seen) await page.touchscreen.tap(at.bx, at.by);
+      await page.touchscreen.tap(at.free.x, at.free.y); await page.waitForTimeout(110); await page.touchscreen.tap(at.free.x, at.free.y);
+      await page.keyboard.press('g');
+      return page.evaluate((seen) => { const G = __mj.Game; return { state: G.state, seen, direct: G.useGold(), stock: __mj.Save.data.gold, gold: G.run.gold, gilt: __mj.monkey.gilt }; }, at.seen);
+    };
+    await page.evaluate(() => { const m = __mj; T.start('ruins', 2); m.Save.data.gold = 5; m.UI.gold(); T.wait(0.5); m.Game.pause(); });
+    const paused = await tryAll();
+    await page.evaluate(() => __mj.Game.resume());
+    const counting = await tryAll();
+    await page.evaluate(() => { const m = __mj, G = m.Game; T.start('ruins', 2); m.Save.data.gold = 5; m.UI.gold(); T.wait(0.3); m.Player.die('bonk'); let t = 0; while (G.state !== 'over' && t < 8) { G.update(1 / 60); t += 1 / 60; } });
+    const over = await tryAll();
+    const no = (r, st) => r.state === st && r.direct === false && r.stock === 5 && r.gold === 0 && !r.gilt;
+    return { ok: no(paused, 'pause') && paused.seen && no(counting, 'count') && counting.seen && no(over, 'over'), paused, counting, over };
+  });
   await scene('double tap: two quick taps on the play area set one off', async () => {
     await fresh(5); const a = await state();
     await page.touchscreen.tap(195, 430); await page.waitForTimeout(110); await page.touchscreen.tap(200, 436);
@@ -417,6 +438,56 @@ const rig = require('./rig');
     begin(1, 5, false); got.coaching = hint();
     d.runs = 5; d.goldUsed = false; d.gold = 5;
     return { ok: got.shown === 'Double tap for the Golden Banana' && got.later === '' && got.afterUse === '' && got.usedFlag === true && got.veteran === '' && got.none === '' && !/Golden/.test(got.coaching), got };
+  });
+
+  // ── leaving a run in the middle of gold ──
+  const golden = () => {                                                                         // everything about a run and its screen that gold touches
+    const m = __mj, G = m.Game, P = m.Player, w = m.world, has = (id, c) => document.getElementById(id).classList.contains(c);
+    const chip = [...document.querySelectorAll('#powers .pw')].find((e) => /Gold/.test(e.textContent));
+    const stretches = [w.cur, w.prev, ...(w.cur ? Object.values(w.cur.kids || {}) : [])].filter(Boolean);
+    return { state: G.state, gold: G.run.gold, over: G.run.goldOver, golden: G.golden(), gilt: m.monkey.gilt, hold: !!w.hold, extra: stretches.reduce((n, sg) => n + sg.bananas.filter((b) => b.gold && !b.got).length, 0),
+      glow: has('goldGlow', 'on'), dim: has('btnGold', 'on'), chip: !!chip && chip.style.display !== 'none', carry: Math.abs(m.fx.cx) + Math.abs(m.fx.cz), speed: G.run.speed, level: G.run.level, depth: w.cur.depth,
+      fov: m.Cam.fovKick, stock: m.Save.data.gold };
+  };
+  const plain = (g) => g.gold === 0 && g.over === 0 && !g.golden && !g.gilt && !g.hold && g.extra === 0 && !g.glow && !g.dim && !g.chip && g.carry === 0;
+  await test('leaving: a restart in the middle of gold begins an ordinary run: himself again, the level free to move on, its own speed, no extra bananas, no glow, no timer; the banana that was used stays used', (src) => {
+    const now = (0, eval)('(' + src + ')'), G = __mj.Game, m = __mj;
+    T.start('ruins', 3); m.Save.data.gold = 5; T.gold(8); T.wait(1.2, () => m.Bot.think());
+    const during = now();
+    G.restart(); const at0 = now();
+    let t = 0; while (G.state !== 'run' && t < 5) { G.update(T.dt); t += T.dt; } T.wait(1, () => m.Bot.think());
+    const after = now();
+    return { ok: during.golden && during.gilt && during.hold && during.extra > 20 && during.carry > 0 && during.stock === 4
+      && at0.gold === 0 && !at0.gilt && !at0.hold && at0.extra === 0 && at0.carry === 0
+      && after.state === 'run' && after.gold === 0 && !after.gilt && !after.hold && after.extra === 0 && !after.glow && !after.dim && !after.chip && after.carry === 0 && after.speed < 12 && after.level === 1 && after.stock === 4, during, at0, after };
+  }, golden.toString());
+  await test('leaving: going home in the middle of gold leaves nothing golden on the home screen, and the next run is an ordinary one', (src) => {
+    const now = (0, eval)('(' + src + ')'), G = __mj.Game, m = __mj;
+    T.start('tide', 3); m.Save.data.gold = 5; T.gold(8); T.wait(1.2, () => m.Bot.think());
+    const during = now();
+    G.toTitle(); for (let i = 0; i < 30; i++) G.update(T.dt);
+    const home = now(), homeChip = document.getElementById('goldHome').textContent;
+    G.startIntro(); let t = 0; while (G.state !== 'run' && t < 6) { G.update(T.dt); t += T.dt; } T.wait(1, () => m.Bot.think());
+    const next = now(); m.Save.data.map = 'ruins';
+    return { ok: during.golden && during.glow && during.dim && during.chip
+      && home.state === 'title' && home.gold === 0 && !home.gilt && !home.hold && home.extra === 0 && !home.glow && !home.dim && home.carry === 0 && home.fov === 0 && homeChip === '4'
+      && next.state === 'run' && next.gold === 0 && !next.gilt && !next.hold && next.extra === 0 && !next.glow && !next.dim && !next.chip && next.carry === 0, during, home, homeChip, next };
+  }, golden.toString());
+  await scene('leaving: a pause in the middle of gold stops its clock; on resuming he is still gold with the time he had left, and it then runs out as it should', async () => {
+    await page.evaluate(() => { const m = __mj; T.start('ruins', 2); m.Save.data.gold = 5; T.gold(6); T.wait(1.5, () => m.Bot.think()); });
+    const before = await page.evaluate((src) => (0, eval)('(' + src + ')')(), golden.toString());
+    await page.evaluate(() => { const G = __mj.Game; G.pause(); for (let i = 0; i < 120; i++) G.update(1 / 60); });       // two seconds of frames while paused
+    const paused = await page.evaluate((src) => (0, eval)('(' + src + ')')(), golden.toString());
+    await page.evaluate(() => { const G = __mj.Game; G.resume(); for (let i = 0; i < 60; i++) G.update(1 / 60); });     // the 3-2-1: frames go by, the clock does not
+    const counting = await page.evaluate((src) => (0, eval)('(' + src + ')')(), golden.toString());
+    await page.waitForFunction(() => __mj.Game.state === 'run', null, { timeout: 8000 });
+    const back = await page.evaluate((src) => { const m = __mj; m.Bot.think(); m.Game.update(1 / 60); return (0, eval)('(' + src + ')')(); }, golden.toString());
+    const end = await page.evaluate((src) => { const m = __mj, G = m.Game; let n = 0; while (G.state === 'run' && G.golden() && n++ < 1500) { m.Bot.think(); G.update(1 / 60); } T.wait(0.2, () => m.Bot.think()); return Object.assign((0, eval)('(' + src + ')')(), { frames: n }); }, golden.toString());
+    const near = (a, b) => Math.abs(a - b) < 0.03;
+    return { ok: before.golden && near(before.gold, 4.5) && paused.state === 'pause' && near(paused.gold, before.gold) && paused.gilt && paused.hold && paused.stock === before.stock
+      && counting.state === 'count' && near(counting.gold, before.gold) && back.state === 'run' && near(back.gold, before.gold - 1 / 60) && back.gilt && back.hold && back.glow
+      && end.state === 'run' && !end.golden && !end.gilt && !end.hold && !end.glow && end.extra === 0 && end.frames > 200 && end.frames < 700,
+      before: before.gold, paused: [paused.state, paused.gold], counting: [counting.state, counting.gold], back: [back.state, back.gold, back.gilt, back.glow], end: [end.state, end.golden, end.gilt, end.hold, end.glow, end.extra, end.frames] };
   });
 
   const bad = errors.filter((e) => !/ReadPixels/.test(e));

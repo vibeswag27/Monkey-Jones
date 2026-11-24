@@ -354,7 +354,7 @@ const Game = {
     boulder.group.visible = false; this.bGap = 15;
     Cam.lookAt = null; Cam.fovKick = 0; Cam.snap(Cam.preset('title'));
     Sound.muffle(true); Sound.rumble(0);
-    UI.setState('title'); UI.refreshTitle(); UI.hint(null); UI.danger(false);
+    UI.setState('title'); UI.hud(this.run, true); UI.refreshTitle(); UI.hint(null); UI.danger(false); // (the HUD is told too: left in the middle of gold, the screen's edge would go on glowing over the home screen)
     this.frameTitle(0, true);
   },
   startIntro(quick) {
