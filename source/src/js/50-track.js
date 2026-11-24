@@ -18,7 +18,7 @@ class Seg {
     this.level = levelOf(this.depth); this.sea = atSea();
     this.dir = DIRS[this.heading]; this.yaw = yawOf(this.heading);
     this.obstacles = []; this.holes = []; this.holeCells = new Set(); this.bananas = []; this.pickups = [];
-    this.decks = []; this.movers = []; this.bridges = []; // raised walkways; obstacles that move; platforms that cross a gap
+    this.decks = []; this.pads = []; this.movers = []; this.bridges = []; // raised walkways; bounce pads and obstacles that move (both also in `obstacles`); platforms that cross a gap
     this.kids = { L: null, R: null };
     this.obI = 0; this.bI = 0; this.group = null; this.dead = false;
   }

@@ -117,6 +117,17 @@ const { open } = require('./lib2');
     return { ok: alive && T.near(P.y, 2.2) && P.grounded, alive, y: P.y };
   });
 
+  await test('deck: one in an outside lane never shoves him off the edge of the path, wherever in it he turns up', () => {
+    const P = __mj.Player, got = [];
+    for (const [lane, x] of [[2, 2.4], [2, 1.5], [0, -2.4], [0, -1.5], [1, 0.3], [1, -0.3]]) {
+      const seg = T.start(), s0 = P.s + 10, d = T.deck(seg, lane, s0, s0 + 40, false); d.seen = true;
+      P.s = s0 + 5; P.x = x; P.lane = lane - 1; T.wait(0.5);
+      got.push({ lane, from: x, x: +P.x.toFixed(2), to: P.lane, y: P.y });
+    }
+    const ok = got.every((r) => Math.abs(r.x) < 2.0 && r.y === 0 && r.to !== r.lane - 1) && got[0].x < 1 && got[1].x < 1 && got[2].x > -1 && got[3].x > -1 && got[4].x > 1 && got[5].x < -1;
+    return { ok, got };
+  });
+
   // ── bounce pads ──
   await test('pad: it throws him about 3.5 m up, and a totem under the arc does not touch him', () => {
     const G = __mj.Game, P = __mj.Player, seg = T.start(), sp = P.s + 20, pad = T.pad(seg, 1, sp); T.pillar(seg, 1, sp + 4);

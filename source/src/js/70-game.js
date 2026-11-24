@@ -219,8 +219,10 @@ const Player = {
       if (s < d.r0) continue;                                                      // not level with it yet
       const top = s >= d.s0 ? d.h : (d.h * (s - d.r0)) / (d.s0 - d.r0);           // how high it stands where he is
       if (top <= this.y + STEP_UP || x + 0.36 <= d.x0 || x - 0.36 >= d.x1) continue; // on it, low enough to step up, or clear of it
-      this.x = x < (d.x0 + d.x1) / 2 ? d.x0 - 0.36 : d.x1 + 0.36;                     // drifted into its side: nudged back out
-      this.lane = clamp(Math.round(this.x / LANE_W), -1, 1);
+      let out = -1;                                                                // drifted into its side: nudged back out, towards the nearest lane that is not itself a wall here
+      for (let l = 0; l <= 2; l++) if (!seg.deckWall(l, s - 0.2, s + 0.2, this.y) && (out < 0 || Math.abs(laneX(l) - x) < Math.abs(laneX(out) - x))) out = l;
+      if (out < 0) continue;
+      this.x = out < d.lane ? d.x0 - 0.36 : d.x1 + 0.36; this.lane = out - 1;
     }
     while (seg.obI < O.length && O[seg.obI].s1 < s - 1.2) seg.obI++;
     const ghost = Game.run.ghost > 0 || this.bouncing; // just landed from a flight, or in the air off a bounce pad: nothing can touch him
