@@ -41,7 +41,7 @@ const owns = (id) => !!CHARS[id] && (FREE_CAST.includes(id) || Save.data.owned.i
 // Who runs in the level that is chosen: in High Tide the seal or the orca if one was picked there, otherwise the everyday runner.
 const runner = () => (atSea() && owns(Save.data.seaChar) ? Save.data.seaChar : Save.data.char);
 // A puff where he pushes off or comes down: dust for feet, bubbles for anyone who swims.
-const puff = (x, z, n) => { if (monkey.swims) fx.bubbles(x, SWIM_Y - 0.35, z, n, 0.7); else fx.dust(x, 0, z, n); };
+const puff = (x, z, n, y) => { if (monkey.swims) fx.bubbles(x, (y || 0) + SWIM_Y - 0.35, z, n, 0.7); else fx.dust(x, y || 0, z, n); };
 
 // The tide. At 0 the lagoon lies far below the path; at 1 the ruins are deep under water.
 const Tide = {
@@ -109,7 +109,7 @@ const Player = {
   reset(seg) {
     this.seg = seg; this.s = 0; this.x = 0; this.lane = 0; this.y = 0; this.vy = 0; this.grounded = true;
     this.slide = 0; this.slideOnLand = false; this.jumpBuf = 0; this.coyote = 0; this.turnQ = null;
-    this.yaw = seg.yaw; this.lean = 0; this.stumbleT = -1; this.dead = false; this.flying = false; this.place();
+    this.yaw = seg.yaw; this.lean = 0; this.stumbleT = -1; this.dead = false; this.flying = false; this.floor = 0; this.bouncing = false; this.place();
   },
   place() { this.wx = this.seg.wx(this.s, this.x); this.wz = this.seg.wz(this.s, this.x); },
 
@@ -138,13 +138,15 @@ const Player = {
       if (o.s0 > this.s + 1.0) break;
       if (!o.gone && o.type === 'pillar' && o.lane === li && o.s1 > this.s - 0.7 && this.y < o.y1 - 0.3) { this.lean = d * 0.55; Game.stumble(o); return; }
     }
+    // a raised walkway beside him is a wall: the swipe is refused, and no harm done
+    if (!this.flying && this.seg.deckWall(li, this.s - 0.4, this.s + Game.run.speed * 0.13 + 0.6, this.y)) { this.lean = d * 0.4; Sound.sfx.thud(); Cam.kick(0.22); return; }
     this.lane = nl; Sound.sfx.lane();
   },
   jump() {
     const sp = Game.run.springs > 0;
     this.vy = JUMP_V * (sp ? SPRING_K : 1); this.grounded = false; this.slide = 0; this.coyote = 0; this.jumpBuf = 0; this.slideOnLand = false;
     if (this.y < 0) this.y = 0;
-    monkey.bounce(sp ? 1.34 : 1.2); puff(this.wx, this.wz, sp ? 8 : 4);
+    monkey.bounce(sp ? 1.34 : 1.2); puff(this.wx, this.wz, sp ? 8 : 4, this.floor);
     if (sp) Sound.sfx.spring(); else Sound.sfx.jump();
   },
   // Rocket: lift off, and string bananas through the air ahead.
@@ -166,6 +168,7 @@ const Player = {
     const seg = this.seg, s = this.s, v = Game.run.speed, x = this.lane * LANE_W, to = s + v * 0.95;
     if (s < (seg.first ? 0 : seg.floorStart + 3) || s > seg.len - HJ - Math.max(18, v * 1.7)) return false;
     for (const h of seg.holes) if (h.s1 > s - 1 && h.s0 < to) return false;
+    if (seg.deckWall(this.lane + 1, s - 1, to, 0)) return false; // not in front of (or half on to) a raised walkway
     for (const o of seg.obstacles) {
       if (o.gone || o.s1 < s - 1) continue;
       if (o.s0 > to) break;
@@ -194,6 +197,19 @@ const Player = {
 
   collide() {
     const seg = this.seg, O = seg.obstacles, s = this.s, x = this.x, y = this.y;
+    // Raised walkways are terrain, so they come first: not even a ghost passes through one.
+    for (const d of seg.decks) {
+      if (s < d.r0 - 0.3 || s > d.s1) continue;
+      if (!d.ramp && !d.seen && s >= d.s0 - 0.3) { // reaching the face of one that has no steps
+        d.seen = true;
+        if (Math.abs(x - (d.x0 + d.x1) / 2) < 0.8 && y < d.h - STEP_UP) { Game.hitDeck(d); if (this.dead) return; continue; }
+      }
+      if (s < d.r0) continue;                                                      // not level with it yet
+      const top = s >= d.s0 ? d.h : (d.h * (s - d.r0)) / (d.s0 - d.r0);           // how high it stands where he is
+      if (top <= this.y + STEP_UP || x + 0.36 <= d.x0 || x - 0.36 >= d.x1) continue; // on it, low enough to step up, or clear of it
+      this.x = x < (d.x0 + d.x1) / 2 ? d.x0 - 0.36 : d.x1 + 0.36;                     // drifted into its side: nudged back out
+      this.lane = clamp(Math.round(this.x / LANE_W), -1, 1);
+    }
     while (seg.obI < O.length && O[seg.obI].s1 < s - 1.2) seg.obI++;
     if (Game.run.ghost > 0) return; // just landed from a flight: nothing can touch him for a moment
     for (let i = seg.obI; i < O.length; i++) {
@@ -234,22 +250,23 @@ const Player = {
       this.place();
       return;
     }
-    const ghost = run.ghost > 0;
-    const over = !ghost && this.y <= 0.02 && seg.overHole(this.s, this.x);
+    const ghost = run.ghost > 0, fy = this.floor = seg.floorY(this.s, this.x); // the floor under him: the path, a flight of steps, or the top of a deck
+    const over = !ghost && fy === 0 && this.y <= 0.02 && seg.overHole(this.s, this.x);
     if (this.grounded) {
       if (over) { this.grounded = false; this.vy = 0; this.coyote = 0.09; this.slide = 0; }
-      else if (this.slide > 0) this.slide -= dt;
+      else if (fy < this.y - 0.05) { this.grounded = false; this.vy = 0; this.coyote = 0.07; } // off the edge of a deck: a beat in which a jump still counts, then the drop
+      else { this.y = fy; if (this.slide > 0) this.slide -= dt; }                             // steps carry him up as he goes
     }
     if (!this.grounded) {
       if (this.coyote > 0) { // a beat of hang time in which a jump still saves you
         this.coyote -= dt;
-        if (this.coyote <= 0 && !ghost && seg.overHole(this.s, this.x)) { this.die('fall'); return; }
+        if (this.coyote <= 0 && !ghost && this.y <= 0.02 && seg.overHole(this.s, this.x)) { this.die('fall'); return; }
       } else {
         this.vy -= GRAVITY * dt; this.y += this.vy * dt;
-        if (this.y <= 0 && this.vy <= 0) {
-          if (!ghost && seg.overHole(this.s, this.x)) { this.die('fall'); return; }
-          this.y = 0; this.vy = 0; this.grounded = true;
-          monkey.bounce(0.8); Sound.sfx.land(); puff(seg.wx(this.s, this.x), seg.wz(this.s, this.x), 5);
+        if (this.y <= fy && this.vy <= 0) { // down on whatever is under him (a jump that only just reaches the lip of a deck scrambles on)
+          if (fy === 0 && !ghost && seg.overHole(this.s, this.x)) { this.die('fall'); return; }
+          this.y = fy; this.vy = 0; this.grounded = true;
+          monkey.bounce(0.8); Sound.sfx.land(); puff(seg.wx(this.s, this.x), seg.wz(this.s, this.x), 5, fy);
           if (this.slideOnLand) this.startSlide();
           else if (this.jumpBuf > 0) this.jump();
         }
@@ -270,7 +287,7 @@ const HINTS = [
 
 const Game = {
   state: 'title', time: 0, run: null, death: null, introT: 0, introLen: 1.75, quick: false,
-  bGap: 15, bPos: new THREE.Vector3(), bSnap: true, bYaw: 0, camFrom: null, camTo: null, bS0: -31, scared: false, hintOn: -1, skyP: 0, seaK: 0, bubT: 0, homeK: 0,
+  bGap: 15, bPos: new THREE.Vector3(), bSnap: true, bYaw: 0, camFrom: null, camTo: null, bS0: -31, scared: false, hintOn: -1, skyP: 0, seaK: 0, bubT: 0, homeK: 0, bY: 0, camF: 0,
 
   blankRun() {
     return { dist: 0, score: 0, nanas: 0, mult: 1, level: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
@@ -356,6 +373,15 @@ const Game = {
     if (Tide.wet) Sound.sfx.shark(); // somewhere behind, something has noticed
     if (o && o.skin === 'clam') { Sound.sfx.clam(); fx.bubbles(P.wx, 0.7, P.wz, 8, 1.1); } // it snaps shut in a huff
     else if (o && o.type !== 'pillar') fx.debris(P.wx, 0.1, P.wz, 5, o.type === 'log' ? ENV.wood : 0x9aa3a8);
+  },
+  // Head-on into the face of a raised walkway. A shield, or the charmed moment after a flight or a bounce, puts him on top of it instead.
+  hitDeck(d) {
+    const run = this.run, P = Player;
+    if (P.flying) return;
+    if (!run.shield && run.ghost <= 0 && !P.bouncing) { P.die('bonk'); return; }
+    if (run.shield && run.ghost <= 0 && !P.bouncing) this.popShield();
+    P.y = d.h; P.vy = 0; P.grounded = true; P.coyote = 0; P.bouncing = false;
+    monkey.bounce(1.25); Cam.kick(0.5); Sound.sfx.land(); fx.sparkle(P.wx, d.h + 1, P.wz, 8, 0xffe45c);
   },
   hitSolid(o) {
     const run = this.run, P = Player;
@@ -576,18 +602,20 @@ const Game = {
     const P = Player;
     let seg = P.seg, sB = P.s - this.bGap, x = P.x * 0.5;
     if (!seg.first && sB < 0 && world.prev && !world.prev.dead) { seg = world.prev; sB = seg.len + sB; x = 0; }
+    else if (seg.decks.some((d) => sB > d.r0 - 4 && sB < d.s1 + 4)) x = P.x; // among raised walkways it keeps to his lane, and goes up and down with the floor
     const tx = seg.wx(sB, x), tz = seg.wz(sB, x), b = this.bPos;
-    if (this.bSnap) { b.set(tx, 0, tz); this.bSnap = false; this.bYaw = seg.yaw; }
+    if (this.bSnap) { b.set(tx, 0, tz); this.bSnap = false; this.bYaw = seg.yaw; this.bY = 0; }
+    const bY = this.bY = damp(this.bY, seg.floorY(sB, x), 9, dt);
     const ox = b.x, oz = b.z;
     b.x = damp(b.x, tx, 16, dt); b.z = damp(b.z, tz, 16, dt);
     this.bYaw = dampAngle(this.bYaw, seg.yaw, 8, dt);
     const moved = Math.hypot(b.x - ox, b.z - oz), shown = this.bGap < 13.5 && this.state !== 'title';
     // On land a boulder rolls after him. Under water a shark takes over (if one is in sight at the time, they swap in a blink).
     const k = this.seaK = damp(this.seaK, Tide.wet ? 1 : 0, 10, dt);
-    boulder.group.position.set(b.x, 0, b.z); boulder.group.rotation.y = this.bYaw;
+    boulder.group.position.set(b.x, bY, b.z); boulder.group.rotation.y = this.bYaw;
     boulder.roll(moved);
     boulder.group.visible = shown && k < 0.97; boulder.group.scale.setScalar(Math.max(0.01, 1 - k));
-    shark.group.position.set(b.x, 0, b.z); shark.group.rotation.y = this.bYaw;
+    shark.group.position.set(b.x, bY, b.z); shark.group.rotation.y = this.bYaw;
     shark.group.visible = shown && k > 0.03; shark.group.scale.setScalar(Math.max(0.01, k));
     if (shark.group.visible) shark.update(dt, this.time, dt > 0 ? moved / dt : 0, this.death && this.death.type === 'boop' && this.death.squashed ? 1 : 0);
     const near = clamp((13 - Math.abs(this.bGap)) / 9, 0, 1);
@@ -622,9 +650,9 @@ const Game = {
 
     // Monkey Jones
     monkey.root.position.set(P.wx, P.y, P.wz); monkey.root.rotation.y = P.yaw;
-    const onFloor = P.y > -0.1 && !P.seg.overHole(P.s, P.x);
+    const fy = P.seg.floorY(P.s, P.x), onFloor = P.y > -0.1 && !(fy === 0 && P.seg.overHole(P.s, P.x));
     monkey.shadow.visible = onFloor && monkey.root.visible;
-    if (onFloor) { const k = clamp(1.25 - P.y * 0.28, 0.5, 1.25) * (monkey.flat > 0 ? 1 + monkey.flat * 0.6 : 1); monkey.shadow.position.set(P.wx, 0.03, P.wz); monkey.shadow.scale.set(k, 1, k); }
+    if (onFloor) { const k = clamp(1.25 - (P.y - fy) * 0.28, 0.5, 1.25) * (monkey.flat > 0 ? 1 + monkey.flat * 0.6 : 1); monkey.shadow.position.set(P.wx, fy + 0.03, P.wz); monkey.shadow.scale.set(k, 1, k); }
     monkey.update(dt, {
       mode, time: this.time, t: this.death ? this.death.t : 0, vy: P.vy, lean: P.lean,
       speedK: clamp((run.speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0, 1),
@@ -634,7 +662,8 @@ const Game = {
     this.placeBoulder(dt);
     world.update(dt, this.time, P.wx, P.y, P.wz);
     fx.update(dt, this.pScale());
-    const camY = this.state === 'dying' && this.death.type === 'fall' ? 0 : P.flying ? P.y * 0.4 : Math.max(0, P.y) * 0.35;
+    const camF = this.camF = damp(this.camF, this.state === 'run' || this.state === 'intro' ? Math.min(fy, Math.max(0, P.y)) : 0, 5, dt); // the camera rides up with the floor he is on
+    const camY = this.state === 'dying' && this.death.type === 'fall' ? 0 : P.flying ? P.y * 0.4 : camF * 0.9 + Math.max(0, P.y - camF) * 0.35;
     Cam.update(dt, P.seg.wx(P.s, P.x * 0.7), camY, P.seg.wz(P.s, P.x * 0.7), P.seg.yaw, false);
     this.updateSea(dt);
     sky.update(dt, this.time, camera, Tide.y);

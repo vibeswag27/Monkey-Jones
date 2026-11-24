@@ -47,6 +47,11 @@ const JUMP_V = 11.4;
 const AIR_T = (2 * JUMP_V) / GRAVITY;            // ~0.67 s in the air
 const JUMP_H = (JUMP_V * JUMP_V) / (2 * GRAVITY); // ~1.9 m
 const SLIDE_T = 0.72;
+const DECK_H = 2.2;          // how high a raised walkway stands: out of reach of a plain jump, within reach of springs or a bounce pad
+const RAMP_LEN = 5.5;        // length of the steps up to one
+const STEP_UP = 0.45;        // the most he can step or scramble up without help
+const PAD_V = 15.4;          // launch speed off a bounce pad (about 3.5 m up)
+const PAD_AIR = (2 * PAD_V) / GRAVITY;
 const SPEED_MIN = 11, SPEED_MAX = 29;
 
 // Levels. A level is a few stretches of track, and you move up one at a corner. Each level is faster and more

@@ -18,6 +18,7 @@ class Seg {
     this.level = levelOf(this.depth); this.sea = atSea();
     this.dir = DIRS[this.heading]; this.yaw = yawOf(this.heading);
     this.obstacles = []; this.holes = []; this.holeCells = new Set(); this.bananas = []; this.pickups = [];
+    this.decks = []; this.movers = []; this.bridges = []; // raised walkways; obstacles that move; platforms that cross a gap
     this.kids = { L: null, R: null };
     this.obI = 0; this.bI = 0; this.group = null; this.dead = false;
   }
@@ -26,6 +27,21 @@ class Seg {
   overHole(s, x) {
     for (const h of this.holes) if (s > h.s0 + 0.14 && s < h.s1 - 0.14 && x > h.x0 && x < h.x1) return true;
     return false;
+  }
+  // How high the floor stands at (s, x): 0, part of the way up a flight of steps, or on top of a deck.
+  // A deck is { lane, s0, s1, h, ramp, r0, x0, x1 }: one lane wide from s0 to s1, with steps from r0 up to s0 if it has any (r0 = s0 if not).
+  floorY(s, x) {
+    let y = 0;
+    for (const d of this.decks) if (s >= d.r0 && s <= d.s1 && x > d.x0 && x < d.x1) y = Math.max(y, s >= d.s0 ? d.h : (d.h * (s - d.r0)) / (d.s0 - d.r0));
+    return y;
+  }
+  // A deck (or its steps) in this lane that stands more than a step above height y somewhere between `from` and `to`: a wall, to anyone at that height.
+  deckWall(lane, from, to, y) {
+    for (const d of this.decks) {
+      if (d.lane !== lane || d.s1 < from || d.r0 > to) continue;
+      if ((to >= d.s0 ? d.h : (d.h * (to - d.r0)) / (d.s0 - d.r0)) > y + STEP_UP) return d;
+    }
+    return null;
   }
 }
 

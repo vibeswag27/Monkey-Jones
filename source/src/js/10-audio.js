@@ -121,6 +121,7 @@ const Sound = (() => {
     power() { [0, 4, 7, 12, 16].forEach((s, i) => { const f = semi(523.25, s); tone('triangle', f, f, 0.2, 0.3, i * 0.065); }); },
     powerEnd() { tone('triangle', 660, 330, 0.25, 0.22); },
     stumble() { tone('sawtooth', 260, 85, 0.24, 0.3); hiss(0.18, 0.5, 'lowpass', 800, 200, 0.7); },
+    thud() { tone('sine', 150, 68, 0.11, 0.4); hiss(0.05, 0.12, 'lowpass', 600, 200, 0.7); }, // shouldering a wall that will not move
     bonk() { tone('sine', 200, 52, 0.32, 1.0); tone('square', 880, 440, 0.07, 0.16); hiss(0.13, 0.7, 'lowpass', 1800, 300, 0.7); boing(0.1); },
     whistle() { tone('sine', 1500, 230, 1.05, 0.3); },
     splash() { hiss(0.55, 0.7, 'lowpass', 3000, 350, 0.6); tone('sine', 430, 100, 0.25, 0.45); },
