@@ -5,7 +5,8 @@ const buzz = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } cat
 
 const Save = {
   // char: the everyday runner, who can go anywhere. seaChar: the seal or the orca, if one of them has been picked for High Tide (they live nowhere else).
-  data: { best: 0, wallet: 0, music: true, sfx: true, runs: 0, up: {}, char: 'monkey', seaChar: null, owned: ['monkey'], map: 'ruins' },
+  // gold: how many golden bananas are in hand. goldUsed: has one ever been set off (until then a run begins with a hint)?
+  data: { best: 0, wallet: 0, music: true, sfx: true, runs: 0, up: {}, char: 'monkey', seaChar: null, owned: ['monkey'], map: 'ruins', gold: GOLD_START, goldUsed: false },
   fixCast(more) { // Monkey Jones is always unlocked; whoever is chosen must be someone you may play
     const d = this.data, have = Array.isArray(d.owned) ? d.owned : [], extra = Array.isArray(more) ? more : [];
     d.owned = CHAR_ORDER.filter((k) => k === 'monkey' || have.includes(k) || extra.includes(k));
@@ -15,8 +16,13 @@ const Save = {
   },
   fixLevels(more) { // every power-up has a level from 1 to 6
     const up = this.data.up && typeof this.data.up === 'object' ? this.data.up : {}, out = {};
-    for (const k of POWER_KINDS) out[k] = clamp(Math.floor(Math.max(up[k] || 1, (more && more[k]) || 1)), 1, MAX_LEVEL);
+    for (const k of UP_KINDS) out[k] = clamp(Math.floor(Math.max(up[k] || 1, (more && more[k]) || 1)), 1, MAX_LEVEL);
     this.data.up = out;
+  },
+  fixGold() { // the stock is a whole number from 0 to 99; a save from before there were golden bananas gets the starting five
+    const d = this.data, g = d.gold;
+    d.gold = typeof g === 'number' && isFinite(g) ? clamp(Math.floor(g), 0, GOLD_MAX) : GOLD_START;
+    d.goldUsed = !!d.goldUsed;
   },
   load(extra) {
     try { const raw = localStorage.getItem('monkeyjones.v1'); if (raw) Object.assign(this.data, JSON.parse(raw)); } catch (e) { /* storage unavailable */ }
@@ -31,7 +37,10 @@ const Save = {
       this.data.runs = Math.max(this.data.runs, s.runs || 0);
       if (typeof s.music === 'boolean') this.data.music = s.music;
       if (typeof s.sfx === 'boolean') this.data.sfx = s.sfx;
+      if (typeof s.gold === 'number') this.data.gold = s.gold; // handed over live from the page this one replaces: that count is the true one
+      if (s.goldUsed) this.data.goldUsed = true;
     }
+    this.fixGold();
   },
   store() { try { localStorage.setItem('monkeyjones.v1', JSON.stringify(this.data)); } catch (e) { /* storage unavailable */ } },
 };
@@ -312,11 +321,12 @@ const HINTS = [
 
 const Game = {
   state: 'title', time: 0, run: null, death: null, introT: 0, introLen: 1.75, quick: false,
+  goldSaves: 0, // how often the last line of defence had to stop gold from killing him: always 0 if every cause is handled where it arises (the tests insist)
   bGap: 15, bPos: new THREE.Vector3(), bSnap: true, bYaw: 0, camFrom: null, camTo: null, bS0: -31, scared: false, hintOn: -1, skyP: 0, seaK: 0, bubT: 0, homeK: 0, bY: 0, camF: 0,
 
   blankRun() {
     return { dist: 0, score: 0, nanas: 0, mult: 1, level: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
-      magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1 } };
+      magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, gold: 0, goldOver: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1, gold: 1 } };
   },
   closeGap() { return Tide.wet ? 3.2 : Cam.portrait ? 4.6 : 4.9; }, // the shark is lower than the boulder, so it comes in closer to be seen
 
@@ -375,6 +385,17 @@ const Game = {
   },
   input(a) {
     if (this.state === 'run' || (this.state === 'intro' && this.introT > (this.quick ? 0.25 : 0.85))) Player.input(a);
+  },
+  // Set off a golden banana, if there is one in hand and this is a moment for it: any time in a run while he is alive,
+  // on the ground or in the air, except while the rocket has him or gold is already on. Returns whether one was spent.
+  useGold() {
+    const run = this.run, P = Player, d = Save.data;
+    if (this.state !== 'run' || P.dead || P.flying || run.gold > 0 || run.goldOver > 0 || d.gold < 1) return false;
+    d.gold--; d.goldUsed = true; Save.store();
+    run.gold = run.max.gold = powerTime('gold'); run.goldOver = 0;
+    run.danger = 0; run.slow = 0; run.invuln = 0; P.stumbleT = -1; // whatever trouble he was in, he is out of it
+    UI.gold();
+    return true;
   },
 
   // ── rules ──

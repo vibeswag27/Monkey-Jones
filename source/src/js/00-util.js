@@ -92,8 +92,17 @@ const POWERS = {
   shield: { name: 'Bubble shield', short: 'Shield', blurb: 'Soaks up one crash', t: [12, 15, 18, 22, 26, 30] },
   springs: { name: 'Super springs', short: 'Springs', blurb: 'Jump clean over totems and beams', t: [8, 10, 12, 15, 18, 22] },
   rocket: { name: 'Coconut rocket', short: 'Rocket', blurb: 'Fly high above the ruins', t: [5, 6, 7, 8.5, 10, 12] },
+  gold: { name: 'Golden banana', short: 'Gold', blurb: 'Unstoppable, three times as fast, bananas everywhere', t: [5, 6, 7, 8, 9, 10] },
 };
-const POWER_KINDS = ['magnet', 'double', 'shield', 'springs', 'rocket'];
+const POWER_KINDS = ['magnet', 'double', 'shield', 'springs', 'rocket']; // the five that lie on the track as tokens
+const UP_KINDS = [...POWER_KINDS, 'gold'];                               // everything with levels to buy in Upgrades
+// The Golden Banana is found only in crates, kept in the save and set off by hand (a double tap). While it lasts he is gold:
+// unstoppable and GOLD_K times as fast, though never faster than GOLD_VMAX (twice the game's top speed).
+const GOLD_K = 3, GOLD_VMAX = 58;
+const GOLD_START = 5, GOLD_MAX = 99;                         // how many a new save holds, and the most any save can
+const GOLD_GRACE = 1.5, GOLD_OVER = 3.5, GOLD_BURST = 2.5;   // when it ends: seconds in which nothing can touch him; how long it may be held on through a corner; seconds of running cleared ahead of him
+const CRATE_ODDS = 0.03;                                     // the chance that a stretch, from level 2 on, holds a crate
+const SMASH_SCORE = 50;                                      // points (times the multiplier) for each thing he smashes while gold
 const UP_COST = [100, 250, 600, 1200, 2500]; // bananas for level 2, 3, 4, 5, 6
 const MAX_LEVEL = 6;
 const FLY_Y = 3.6;          // cruising height with the rocket

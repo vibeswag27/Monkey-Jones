@@ -58,6 +58,17 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cu
 .pw svg{width:22px;height:22px;flex:none}
 .pw .bar{width:52px;height:8px;border-radius:4px;background:#E4D2B6;overflow:hidden;border:1.5px solid var(--ink)}
 .pw .bar i{display:block;height:100%;background:var(--lagoon);transform-origin:left center}
+/* the golden banana: a round button low on the right where a thumb finds it, with how many are left */
+.gold-btn{position:absolute;right:max(14px,env(safe-area-inset-right));bottom:max(26px,calc(env(safe-area-inset-bottom) + 16px));width:68px;height:68px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#FFF3B0 0,#FFD23F 45%,#F2A20C 100%);border:3px solid var(--ink);box-shadow:0 5px 0 var(--ink);display:grid;place-items:center;
+  visibility:hidden;transition:transform .06s,box-shadow .06s,opacity .2s}
+.gold-btn[hidden]{display:none}
+[data-state="intro"] .gold-btn,[data-state="run"] .gold-btn,[data-state="count"] .gold-btn,[data-state="pause"] .gold-btn{visibility:visible}
+.gold-btn:active{transform:translateY(3px);box-shadow:0 2px 0 var(--ink)}
+.gold-btn svg{width:42px;height:42px}
+.gold-n{position:absolute;right:-7px;top:-7px;min-width:27px;height:27px;padding:0 5px;border-radius:14px;background:var(--cream);border:3px solid var(--ink);font-weight:700;font-size:15px;line-height:21px;text-align:center;font-variant-numeric:tabular-nums}
+.chip.gold{background:radial-gradient(circle at 30% 30%,#FFF3B0 0,#FFD23F 55%,#F2A20C 100%)}
+.chip.gold[hidden]{display:none}
 .round{position:relative;width:46px;height:46px;border-radius:50%;background:var(--cream);border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink);display:grid;place-items:center;transition:transform .06s,box-shadow .06s}
 .round svg{width:24px;height:24px}
 .round:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
@@ -253,6 +264,10 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="2" fill="#3A1E14"/><rect x="14" y="4" width="5" height="16" rx="2" fill="#3A1E14"/></svg>
       </button>
     </div>
+    <button id="btnGold" class="gold-btn" aria-label="Use a golden banana" hidden>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFF6CF" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/><path d="M23.5 2.6l1.4 3.5 3.5 1.4-3.5 1.4-1.4 3.5-1.4-3.5-3.5-1.4 3.5-1.4z" fill="#fff" stroke="#3A1E14" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span id="goldCount" class="gold-n">5</span>
+    </button>
   </div>
 
   <div class="layer"><div id="hint" class="hint"><span id="hintIcon"></span><span id="hintText"></span></div></div>
@@ -276,6 +291,10 @@ button:focus-visible{outline:4px solid #fff;outline-offset:3px}
         <button id="btnShop" class="plain">Upgrades</button>
       </div>
       <div class="meta">
+        <div id="goldHomeChip" class="chip gold" aria-label="Golden bananas" hidden>
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFF6CF" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/><path d="M23.5 2.6l1.4 3.5 3.5 1.4-3.5 1.4-1.4 3.5-1.4-3.5-3.5-1.4 3.5-1.4z" fill="#fff" stroke="#3A1E14" stroke-width="1.7" stroke-linejoin="round"/></svg>
+          <span id="goldHome">5</span>
+        </div>
         <div class="chip">Best <span id="best">0</span></div>
         <div class="chip nana">
           <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFD23F" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/></svg>

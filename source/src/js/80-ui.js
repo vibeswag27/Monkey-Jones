@@ -6,7 +6,9 @@ const UI = (() => {
   for (const id of ['score', 'mult', 'level', 'bananas', 'nanaChip', 'powers', 'hint', 'hintIcon', 'hintText', 'toast', 'levelUp', 'levelNum', 'levelName', 'best', 'wallet', 'how', 'countNum', 'wipe', 'danger', 'sea', 'plunge',
     'overTitle', 'overSub', 'newBest', 'oScore', 'oDist', 'oLevel', 'oNanas', 'oBest', 'btnRun', 'btnPause', 'btnResume', 'btnRestart', 'btnHome', 'btnHome2', 'btnAgain',
     'btnMusic', 'btnSfx', 'btnMusic2', 'btnSfx2', 'fatalMsg', 'btnShop', 'btnShop2', 'btnShopDone', 'shopList', 'shopWallet',
-    'btnChars', 'btnPrev', 'btnNext', 'btnCharGo', 'btnCharDone', 'charName', 'charBlurb', 'charDots', 'charWallet', 'charNeed', 'mapRuins', 'mapTide']) el[id] = $(id);
+    'btnChars', 'btnPrev', 'btnNext', 'btnCharGo', 'btnCharDone', 'charName', 'charBlurb', 'charDots', 'charWallet', 'charNeed', 'mapRuins', 'mapTide',
+    'btnGold', 'goldCount', 'goldHome', 'goldHomeChip']) el[id] = $(id);
+  const GOLDNANA = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFB400" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/><path d="M23.5 2.6l1.4 3.5 3.5 1.4-3.5 1.4-1.4 3.5-1.4-3.5-3.5-1.4 3.5-1.4z" fill="#fff" stroke="#3A1E14" stroke-width="1.7" stroke-linejoin="round"/></svg>';
   const NANA = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 10.5c1.6 8.6 9.3 14.4 20.3 13.3 1.7-.2 1.9-2.3.3-2.8C18.9 18.9 14 14.4 12.2 8 11.8 6.4 9.9 6.2 9 7.4z" fill="#FFD23F" stroke="#3A1E14" stroke-width="2.4" stroke-linejoin="round"/><path d="M9.3 6.8l1.2-3" stroke="#3A1E14" stroke-width="2.8" stroke-linecap="round"/></svg>';
   const touch = !!((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window);
   const last = { score: -1, nanas: -1, mult: -1, level: -1, danger: false, sea: false, popAt: 0 };
@@ -23,6 +25,7 @@ const UI = (() => {
     springs: ['Springs', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20.5l10-2.6L7 15.3l10-2.6L7 10.1l10-2.6L7 4.9" fill="none" stroke="#3A1E14" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 20.5l10-2.6L7 15.3l10-2.6L7 10.1l10-2.6L7 4.9" fill="none" stroke="#6FD93A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'],
     rocket: ['Rocket', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.5c-2.2 1.6-2.2 4 0 5.6 2.2-1.6 2.2-4 0-5.6z" fill="#FF8A1F" stroke="#3A1E14" stroke-width="1.6" stroke-linejoin="round"/><path d="M8.6 12.5l-3.2 4.3 3.9-.9zM15.4 12.5l3.2 4.3-3.9-.9z" fill="#E8402A" stroke="#3A1E14" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 1.8c4 3.6 5 9.4 3.4 14.6H8.6C7 11.2 8 5.4 12 1.8z" fill="#FFF2DC" stroke="#3A1E14" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="8.8" r="2" fill="#5FD6F2" stroke="#3A1E14" stroke-width="1.4"/></svg>'],
   };
+  PW.gold = ['Gold', GOLDNANA];
   const pw = {};
   for (const kind in PW) {
     const d = document.createElement('div');
@@ -53,7 +56,15 @@ const UI = (() => {
     touch,
     setState(s) { stage.dataset.state = s; },
     fatal(msg) { if (msg) el.fatalMsg.textContent = msg; stage.dataset.state = 'fatal'; },
+    // The golden bananas in hand: on the round button of the HUD (which goes when there are none) and on the home screen.
+    gold() {
+      const n = Save.data.gold;
+      el.goldCount.textContent = n; el.goldHome.textContent = n;
+      el.btnGold.hidden = n < 1; el.goldHomeChip.hidden = n < 1;
+      el.btnGold.setAttribute('aria-label', 'Use a golden banana (' + n + ' left)');
+    },
     refreshTitle() {
+      api.gold();
       el.best.textContent = fmt(Save.data.best); el.wallet.textContent = fmt(Save.data.wallet);
       setText(el.how, touch ? 'Swipe to dodge, jump and slide' : 'Arrow keys to dodge, jump and slide');
       el.mapRuins.setAttribute('aria-checked', String(Save.data.map !== 'tide')); el.mapTide.setAttribute('aria-checked', String(Save.data.map === 'tide'));
@@ -74,6 +85,7 @@ const UI = (() => {
       const mx = run.max;
       setPower('magnet', run.magnet / mx.magnet); setPower('double', run.dbl / mx.double); setPower('shield', run.shield ? run.shieldT / mx.shield : 0);
       setPower('springs', run.springs / mx.springs); setPower('rocket', Player.flying ? Math.max(0.03, run.rocket / mx.rocket) : 0);
+      setPower('gold', run.gold > 0 || run.goldOver > 0 ? Math.max(0.03, run.gold / mx.gold) : 0);
     },
     popBananas() {
       const now = performance.now();
@@ -116,7 +128,7 @@ const UI = (() => {
     renderShop() {
       const w = Save.data.wallet, sec = (t) => t + ' s';
       el.shopWallet.textContent = fmt(w);
-      el.shopList.innerHTML = POWER_KINDS.map((k) => {
+      el.shopList.innerHTML = UP_KINDS.map((k) => {
         const p = POWERS[k], lv = Save.data.up[k], top = lv >= MAX_LEVEL, cost = top ? 0 : UP_COST[lv - 1];
         const pips = p.t.map((_, i) => '<i' + (i < lv ? ' class="on"' : '') + '></i>').join('');
         const note = 'Lasts ' + sec(p.t[lv - 1]) + (top ? '' : ', next level ' + sec(p.t[lv]));
@@ -177,6 +189,7 @@ const UI = (() => {
       const press = (b, fn) => b.addEventListener('click', (e) => { e.preventDefault(); Sound.unlock(); Sound.sfx.click(); fn(); b.blur(); });
       press(el.btnRun, () => Game.startIntro(false));
       press(el.btnPause, () => Game.pause());
+      press(el.btnGold, () => Game.useGold());
       press(el.btnResume, () => Game.resume());
       press(el.btnRestart, () => api.wipe(() => Game.restart()));
       press(el.btnAgain, () => api.wipe(() => Game.restart()));
@@ -200,7 +213,7 @@ const UI = (() => {
       let ptr = null;
       stage.addEventListener('pointerdown', (e) => {
         if (e.target.closest && e.target.closest('button, .card')) return;
-        ptr = { id: e.pointerId, x: e.clientX, y: e.clientY, fired: false };
+        ptr = { id: e.pointerId, x: e.clientX, y: e.clientY, fired: false, t: performance.now() };
       });
       stage.addEventListener('pointermove', (e) => { // one swipe = one move, however long the swipe is
         if (!ptr || e.pointerId !== ptr.id || ptr.fired) return;
@@ -210,7 +223,16 @@ const UI = (() => {
         if (stage.dataset.state === 'chars') { if (Math.abs(dx) > Math.abs(dy)) api.browse(dx < 0 ? 1 : -1); return; }
         Game.input(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up');
       });
-      const end = (e) => { if (ptr && e.pointerId === ptr.id) ptr = null; Sound.unlock(); };
+      // A tap is a touch that comes up again within 0.3 s without having turned into a swipe; two taps within 0.35 s set off a golden banana.
+      let tapAt = -1e9;
+      const end = (e) => {
+        if (ptr && e.pointerId === ptr.id) {
+          const now = performance.now(), tap = e.type === 'pointerup' && !ptr.fired && now - ptr.t < 300;
+          if (tap && now - tapAt < 350) { tapAt = -1e9; Game.useGold(); } else tapAt = tap ? now : -1e9;
+          ptr = null;
+        }
+        Sound.unlock();
+      };
       stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
       for (const ev of ['touchend', 'click']) document.addEventListener(ev, () => Sound.unlock(), true); // any tap can bring sound back
       stage.addEventListener('touchmove', (e) => { if (!(e.target.closest && e.target.closest('.shop'))) e.preventDefault(); }, { passive: false });
@@ -229,6 +251,7 @@ const UI = (() => {
           e.preventDefault(); return;
         }
         if (e.code === 'KeyP' || e.code === 'Escape') { if (st === 'run' || st === 'count') Game.pause(); else if (st === 'pause') Game.resume(); e.preventDefault(); return; }
+        if (e.code === 'KeyG') { Game.useGold(); e.preventDefault(); return; }
         if (e.code === 'KeyM') { Save.data.music = !Save.data.music; Save.data.sfx = Save.data.music; Save.store(); api.syncToggles(); return; }
         if ((e.code === 'Enter' || e.code === 'Space') && !onButton) {
           if (st === 'title') { Game.startIntro(false); e.preventDefault(); return; }
