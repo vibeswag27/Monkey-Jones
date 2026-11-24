@@ -337,7 +337,7 @@ const Game = {
 
   blankRun() {
     return { dist: 0, score: 0, nanas: 0, mult: 1, level: 1, speed: 0, slow: 0, danger: 0, invuln: 0, ghost: 0, chain: 0, chainT: 0, pulled: [], turns: 0,
-      magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, gold: 0, goldOver: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1, gold: 1 } };
+      magnet: 0, dbl: 0, shield: false, shieldT: 0, springs: 0, rocket: 0, gold: 0, goldOver: 0, coast: 0, max: { magnet: 1, double: 1, shield: 1, springs: 1, rocket: 1, gold: 1 } };
   },
   closeGap() { return Tide.wet ? 3.2 : Cam.portrait ? 4.6 : 4.9; }, // the shark is lower than the boulder, so it comes in closer to be seen
 
@@ -446,18 +446,29 @@ const Game = {
     monkey.bounce(1.25); Cam.kick(0.5); Sound.sfx.land(); fx.sparkle(P.wx, d.h + 1, P.wz, 8, 0xffe45c);
   },
   // While he is gold, whatever he runs into is knocked flying, and scores.
-  goldSmash(o) {
+  // (`burst`: it was not run into but cleared out of his way as gold ended: no points for that, and it flies apart where it stood.)
+  goldSmash(o, burst) {
     if (o.gone) return;
-    const run = this.run, P = Player, seg = P.seg, ox = clamp(P.x, o.x0, o.x1);
+    const run = this.run, P = Player, seg = P.seg, ox = burst ? clamp((o.x0 + o.x1) / 2, -LANE_W, LANE_W) : clamp(P.x, o.x0, o.x1);
     world.smash(seg, o);
-    run.smashed = (run.smashed || 0) + 1; run.score += SMASH_SCORE * run.mult * (run.dbl > 0 ? 2 : 1);
-    fx.debris(seg.wx(o.s, ox), P.floor + 0.5, seg.wz(o.s, ox), 9, o.type === 'log' || o.skin === 'mask' ? ENV.wood : o.skin === 'crab' ? 0xff6a4a : o.skin === 'jelly' ? 0xff8fc7 : 0x9fb0b8);
+    if (!burst) { run.smashed = (run.smashed || 0) + 1; run.score += SMASH_SCORE * run.mult * (run.dbl > 0 ? 2 : 1); }
+    fx.debris(seg.wx(o.s, ox), P.floor + 0.5, seg.wz(o.s, ox), burst ? 6 : 9, o.type === 'log' || o.skin === 'mask' ? ENV.wood : o.skin === 'crab' ? 0xff6a4a : o.skin === 'jelly' ? 0xff8fc7 : 0x9fb0b8);
     fx.sparkle(seg.wx(o.s, ox), P.floor + 1, seg.wz(o.s, ox), 5, 0xffe45c);
-    if (this.time - (this.smashAt || 0) > 0.09) { this.smashAt = this.time; Sound.sfx.smash(); Cam.kick(0.3); buzz(12); }
+    if (!burst && this.time - (this.smashAt || 0) > 0.09) { this.smashAt = this.time; Sound.sfx.smash(); Cam.kick(0.3); buzz(12); }
   },
   golden() { const r = this.run; return !!r && (r.gold > 0 || r.goldOver > 0); }, // is gold on (or being held on through a corner)?
-  // Gold is over. (Task 4 gives it its proper ending.)
-  endGold() { world.setHold(false); world.dropGold(); },
+  // Gold is over. One last burst clears his way (everything that can be smashed, in every lane, for the next GOLD_BURST seconds of
+  // ordinary running), and for GOLD_GRACE seconds nothing can touch him while his speed comes back down. What a burst cannot move
+  // (a wall, a gap) the grace sees him over. Never called in the run-up to a corner (see updateRun), so the burst need not reach round one.
+  endGold() {
+    const run = this.run, P = Player, seg = P.seg, reach = P.s + GOLD_BURST * levelSpeed(run.level);
+    run.gold = 0; run.goldOver = 0;
+    let hit = 0;
+    for (const o of seg.obstacles) { if (o.gone || o.type === 'pad' || o.s1 < P.s - 2) continue; if (o.s1 > reach) break; this.goldSmash(o, true); hit++; }
+    run.ghost = Math.max(run.ghost, GOLD_GRACE); run.coast = 1;
+    world.setHold(false); world.dropGold();
+    if (hit) { Sound.sfx.smash(); Cam.kick(0.6); buzz(30); }
+  },
   hitSolid(o) {
     const run = this.run, P = Player;
     if (run.ghost > 0 || P.flying || this.golden()) return;
@@ -523,11 +534,16 @@ const Game = {
     const run = this.run, P = Player;
     if (run.slow > 0) run.slow -= dt;
     const golden = this.golden(), vL = levelSpeed(run.level);
-    run.speed = damp(run.speed, golden ? Math.min(GOLD_K * vL, GOLD_VMAX) : vL * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), golden ? 6 : 5, dt);
+    if (run.coast > 0) run.coast -= dt; // (for a second after gold he sheds speed gently)
+    run.speed = damp(run.speed, golden ? Math.min(GOLD_K * vL, GOLD_VMAX) : vL * (run.slow > 0 ? 0.62 : 1) * (P.flying ? 1.3 : 1), golden ? 6 : run.coast > 0 ? 2.5 : 5, dt);
     P.update(dt);
     if (P.dead) return;
     if (golden) world.goldAhead(P.s); // bananas in all three lanes, as far as he can see
-    if (run.gold > 0) { run.gold -= dt; if (run.gold <= 0) { run.gold = 0; this.endGold(); } }
+    if (run.gold > 0) { run.gold -= dt; if (run.gold <= 0) { run.gold = 0; run.goldOver = 1e-6; } }
+    if (run.goldOver > 0) { // time is up. But not in the run-up to a corner: there it is held on until he is round (a second or so; the tests hold it under GOLD_OVER)
+      run.goldOver += dt;
+      if (P.s <= P.seg.len - HJ - Math.max(18, 1.7 * vL)) this.endGold();
+    }
     run.dist += run.speed * dt;
     run.score += run.speed * dt * run.mult * (run.dbl > 0 ? 2 : 1);
     if (run.danger > 0) run.danger -= dt;
@@ -542,7 +558,7 @@ const Game = {
       else monkey.bubble.visible = run.shieldT > 2 || Math.floor(run.shieldT * 8) % 2 === 0; // flickers before it goes
     }
     if (P.flying) run.rocket -= dt;
-    if (run.ghost > 0) run.ghost -= dt;
+    if (run.ghost > 0) { run.ghost -= dt; if (run.ghost <= 0 && P.floor === 0 && P.seg.overHole(P.s, P.x)) run.ghost = 0.05; } // (the grace never runs out while he is still over a gap)
     if (P.stumbleT >= 0) { P.stumbleT += dt / 0.55; if (P.stumbleT >= 1) P.stumbleT = -1; }
     this.collect(dt);
 

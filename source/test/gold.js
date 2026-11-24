@@ -213,6 +213,48 @@ const rig = require('./rig');
     return { ok: during > 30 && !G.golden() && left === 0, during, left, golden: G.golden() };
   });
 
+  // ── how it ends ──
+  await test('end: a last burst clears the way: every totem for the next 2.5 s of ordinary running is knocked away, and the next one is left', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), s = P.s, pillars = [];
+    for (let q = s + 14; q < s + 72; q += 6) pillars.push(T.pillar(seg, 1, q));
+    G.goldSaves = 0; T.gold(1); let n = 0; while (G.state === 'run' && G.golden() && n++ < 600) G.update(T.dt);
+    const at = P.s, ghost = G.run.ghost, reach = at + 2.5 * 11;
+    const wrong = pillars.filter((o) => (o.s1 < reach - 0.1) !== !!o.gone && Math.abs(o.s - reach) > 0.8).length, standing = pillars.filter((o) => !o.gone).length;
+    const alive = T.wait(1.4);
+    return { ok: alive && wrong === 0 && standing >= 1 && ghost > 1.4 && ghost <= 1.5 && G.goldSaves === 0, at: +(at - s).toFixed(1), wrong, standing, ghost, alive };
+  });
+  await test('end: a long gap that he is still over when the grace would run out does not swallow him', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), s = P.s; T.hole(seg, s + 34, 36);
+    G.goldSaves = 0; T.gold(1); let n = 0; while (G.state === 'run' && G.golden() && n++ < 600) G.update(T.dt);
+    const at = P.s - s; let t = 0, overAt = -1; const alive = T.to(s + 76, () => { t += T.dt; if (overAt < 0 && G.run.ghost <= 0) overAt = P.s - s; });
+    return { ok: alive && at < 34 && t > 2 && overAt >= 69.8 && overAt < 72 && P.y === 0 && G.goldSaves === 0, endedAt: +at.toFixed(1), secs: +t.toFixed(2), graceOverAt: +overAt.toFixed(1), alive };
+  });
+  await test('end: if time runs out in the run-up to a corner, gold holds through the corner and is off within a second after it', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(); G.goldSaves = 0; T.gold(60);
+    T.to(seg.len - 3.2 - 12); G.run.gold = 0.02;
+    let held = 0, dropped = false, over = 0, n = 0;
+    while (G.state === 'run' && G.run.turns < 1 && n++ < 600) { G.update(T.dt); if (G.run.turns < 1) { if (G.golden()) held++; else dropped = true; } over = Math.max(over, G.run.goldOver); }
+    const turned = G.run.turns; let after = 0; n = 0; while (G.state === 'run' && G.golden() && n++ < 600) { G.update(T.dt); after += T.dt; over = Math.max(over, G.run.goldOver); }
+    const grace = G.run.ghost, alive = T.wait(1);
+    return { ok: alive && turned === 1 && !dropped && held > 5 && after < 1 && !G.golden() && over > 0.1 && over < 3.5 && grace > 1.3 && G.goldSaves === 0, turned, dropped, held, after: +after.toFixed(2), over: +over.toFixed(2), grace: +grace.toFixed(2), state: G.state };
+  });
+  await test('end: afterwards everything is as it was: no gold, no hold on the level, the level\'s own speed, the chaser at its distance, and another can be set off', () => {
+    const G = __mj.Game, P = __mj.Player, m = __mj; T.start(); T.gold(1.5);
+    let n = 0; while (G.state === 'run' && G.golden() && n++ < 900) G.update(T.dt);
+    const now = { gold: G.run.gold, over: G.run.goldOver, hold: m.world.hold }, play = () => m.Bot.think();
+    T.wait(2, play); const speed = G.run.speed; T.wait(2.5, play);
+    const again = (m.Save.data.gold = 3, G.useGold());
+    return { ok: now.gold === 0 && now.over === 0 && now.hold === false && Math.abs(speed - 11) < 1 && G.bGap >= 15 && G.bGap < 22 && G.run.danger <= 0 && again === true, now, speed: +speed.toFixed(2), gap: +G.bGap.toFixed(1), again };
+  });
+  await test('end: the run gets deeper again afterwards: set off on the last stretch of level 1, level 2 comes a few corners after gold, never during it', () => {
+    const G = __mj.Game, P = __mj.Player, m = __mj;
+    m.Save.data.runs = 5; m.Save.data.map = 'ruins'; m.Seg.startDepth = 3; G.restart(); m.Seg.startDepth = 0; let t = 0; while (G.state !== 'run' && t < 5) { G.update(T.dt); t += T.dt; }
+    G.run.danger = 0; G.goldSaves = 0; T.gold(4);
+    let during = 1, endTurns = -1, n = 0;
+    while (G.state === 'run' && G.run.level < 2 && n++ < 60 * 90) { m.Bot.think(); G.update(T.dt); if (G.golden()) during = Math.max(during, G.run.level); else if (endTurns < 0) endTurns = G.run.turns; }
+    return { ok: G.state === 'run' && during === 1 && G.run.level === 2 && endTurns >= 1 && G.run.turns - endTurns <= 4 && G.goldSaves === 0, state: G.state, during, level: G.run.level, cornersInGold: endTurns, cornersAfter: G.run.turns - endTurns, death: G.death && G.death.type };
+  });
+
   const bad = errors.filter((e) => !/ReadPixels/.test(e));
   console.log(bad.join('\n') || 'no errors');
   console.log(fails || bad.length ? `FAIL: ${fails} of ${ran}` : `PASS: all ${ran} golden banana rules hold`);
