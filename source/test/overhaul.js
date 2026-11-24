@@ -111,6 +111,12 @@ const { open } = require('./lib2');
     return { ok: Math.abs(__mj.boulder.group.position.y - 2.2) < 0.15, y: __mj.boulder.group.position.y };
   });
 
+  await test('deck: the charmed moment after a rocket flight sets him on top of a face instead of ending the run', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), s0 = P.s + 25; T.deck(seg, 1, s0, s0 + 30, false);
+    T.to(s0 - 3); G.run.ghost = 1.0; const alive = T.to(s0 + 5);
+    return { ok: alive && T.near(P.y, 2.2) && P.grounded, alive, y: P.y };
+  });
+
   // ── bounce pads ──
   await test('pad: it throws him about 3.5 m up, and a totem under the arc does not touch him', () => {
     const G = __mj.Game, P = __mj.Player, seg = T.start(), sp = P.s + 20, pad = T.pad(seg, 1, sp); T.pillar(seg, 1, sp + 4);
@@ -257,6 +263,36 @@ const { open } = require('./lib2');
     const n = { s: b.s0 + 2, x: b.x, y: 0.62, got: false, pull: -1, ph: 0, wx: 0, wz: 0, ride: b }; seg.bananas.push(n);
     const seen = new Set(); T.wait(4, () => { seen.add(Math.round(n.x * 10)); });
     return { ok: seen.size > 3 && n.x === b.x && Math.abs(n.wx - seg.wx(n.s, n.x)) < 1e-9 && Math.abs(n.wz - seg.wz(n.s, n.x)) < 1e-9, places: seen.size };
+  });
+
+  // ── a new run starts clean ──
+  await test('restart: straight from the top of a deck, the new run begins on the ground with the camera down', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), s0 = P.s + 25; T.deck(seg, 1, s0, s0 + 40, true);
+    T.to(s0 + 12); T.wait(0.6); const before = { y: P.y, camF: G.camF };
+    G.restart(); const after = { y: P.y, floor: P.floor, camF: G.camF, g: P.grounded };
+    return { ok: before.y > 2 && before.camF > 1.5 && after.y === 0 && after.floor === 0 && after.camF === 0 && after.g, before, after };
+  });
+  await test('restart: after dying in mid-bounce, the new run is not still bouncing and nothing is carried over', () => {
+    const G = __mj.Game, P = __mj.Player, seg = T.start(), sp = P.s + 20; T.pad(seg, 1, sp);
+    T.to(sp + 3); const mid = { b: P.bouncing, y: P.y }; P.die('bonk');
+    let n = 0; while (G.state !== 'over' && n++ < 900) G.update(T.dt);
+    G.restart(); n = 0; while (G.state !== 'run' && n++ < 600) G.update(T.dt);
+    T.wait(0.3);
+    return { ok: mid.b === true && mid.y > 1 && G.state === 'run' && P.bouncing === false && P.y === 0 && P.grounded && G.camF < 0.02 && Math.abs(G.bY) < 0.02, mid, state: G.state, b: P.bouncing, y: P.y, camF: G.camF, bY: G.bY };
+  });
+  await test('restart: the new world is new: bridges free, pads unused, movers untouched', () => {
+    const G = __mj.Game, P = __mj.Player, m = __mj;
+    m.Seg.startDepth = 12; G.restart(); let n = 0; while (G.state !== 'run' && n++ < 600) G.update(T.dt);
+    for (let i = 0; i < 600 && G.state === 'run'; i++) { m.Bot.think(); G.update(T.dt); }       // ten seconds of play, to dirty things
+    m.Seg.startDepth = 12; G.restart(); m.Seg.startDepth = 0;
+    const segs = [m.world.cur, m.world.cur.kids.L, m.world.cur.kids.R].filter(Boolean), bad = [];
+    let pieces = 0;
+    for (const seg of segs) {
+      for (const b of seg.bridges) { pieces++; if (b.locked) bad.push('bridge locked'); }
+      for (const o of seg.obstacles) { if (o.type === 'pad') { pieces++; if (o.used) bad.push('pad used'); } if (o.type === 'mover') { pieces++; if (o.hit) bad.push('mover hit'); } }
+      for (const d of seg.decks) { pieces++; if (d.seen) bad.push('deck face already met'); }
+    }
+    return { ok: bad.length === 0 && segs.length >= 2, pieces, bad };
   });
 
   console.log(errors.filter((e) => !/ReadPixels/.test(e)).join('\n') || 'no errors'); if (errors.filter((e) => !/ReadPixels/.test(e)).length) fails++;

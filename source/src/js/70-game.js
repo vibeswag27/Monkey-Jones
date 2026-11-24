@@ -340,7 +340,7 @@ const Game = {
     this.skyP = this.run.level - 1;
     this.state = 'intro'; this.quick = !!quick; this.introT = 0; this.introLen = quick ? 1.0 : 1.8; this.scared = false; this.hintOn = -1;
     monkey.holdBanana(false); monkey.setExpr('normal');
-    boulder.group.visible = true; this.bS0 = quick ? -15 : -31; this.bGap = Player.s - this.bS0; this.bSnap = true;
+    boulder.group.visible = true; this.bS0 = quick ? -15 : -31; this.bGap = Player.s - this.bS0; this.bSnap = true; this.camF = 0; this.bY = 0;
     this.camFrom = quick ? Object.assign(Cam.preset('run'), { a: 1.15, dist: 5.2, height: 2.4 }) : Object.assign({}, Cam.c);
     this.camTo = Cam.preset('run');
     Cam.snap(this.camFrom);

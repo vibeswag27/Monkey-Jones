@@ -229,11 +229,18 @@ function bridgeGeo() {
 }
 function makeBridge(b, sea) {
   const geo = bridgeGeo()[sea ? 'turtle' : 'stone'], grp = new THREE.Group(), n = Math.max(1, Math.round((b.s1 - b.s0) / ROW));
-  for (let i = 0; i < n; i++) {
-    const one = new THREE.Group();
-    for (const [part, mat] of [['env', MAT.env], ['ink', MAT.ink], ['glow', MAT.glow]]) if (geo[part].attributes.position.count) one.add(sharedMesh(geo[part], mat));
-    one.position.z = -(b.s0 + (i + 0.5) * ROW);
-    grp.add(one);
+  for (const half of [0, 1]) { // every other stone goes into one mesh and the rest into another: two sets that ride a little out of step, for six draws a bridge
+    const env = new GeoBuilder(), ink = new GeoBuilder(false), glow = new GeoBuilder();
+    for (let i = half; i < n; i += 2) {
+      const m = M(0, 0, -(b.s0 + (i + 0.5) * ROW), 1, 1, 1);
+      env.add(geo.env, m); ink.add(geo.ink, m);
+      if (geo.glow.attributes.position.count) glow.add(geo.glow, m);
+    }
+    if (!env.n) continue;
+    const set = new THREE.Group();
+    set.add(new THREE.Mesh(env.build(), MAT.env), new THREE.Mesh(ink.build(), MAT.ink));
+    if (glow.n) set.add(new THREE.Mesh(glow.build(), MAT.glow));
+    grp.add(set);
   }
   b.mesh = grp; b.sea = sea;
   return grp;
@@ -241,9 +248,9 @@ function makeBridge(b, sea) {
 function poseBridge(b, t) {
   const kids = b.mesh.children;
   b.mesh.position.x = b.x;
-  for (let i = 0; i < kids.length; i++) { // each rides a little differently from its neighbours
-    const a = t * (b.sea ? 2.1 : 1.6) + i * 1.3;
+  for (let i = 0; i < kids.length; i++) { // each set rides a little differently from the other
+    const a = t * (b.sea ? 2.1 : 1.6) + i * 2.2;
     kids[i].position.y = (b.sea ? 0.03 : 0.025) * Math.sin(a) - 0.03;
-    kids[i].rotation.z = (b.sea ? 0.035 : 0.012) * Math.sin(a * 0.8 + 1);
+    kids[i].rotation.z = (b.sea ? 0.03 : 0.012) * Math.sin(a * 0.8 + 1);
   }
 }

@@ -44,6 +44,8 @@ const { open } = require('./lib2');
             for (const p of seg.pickups) if (Math.abs(p.x - x) < 0.5 && p.s > d.r0 - 1 && p.s < d.s1 + 1) f('a pick-up buried in a deck');
           }
           const AIR = (2 * 15.4) / 34, fly = v * AIR; // a bounce: how long in the air, and how far that is at this level's speed
+          const edge = seg.len - HJ - Math.max(11, 0.8 * v) + 1e-6; // the run-up to the corner: nothing new may reach into it
+          for (const o of O) if ((o.type === 'mover' && o.s1 > edge) || (o.type === 'pad' && o.s + fly > edge)) f(o.type + ' (or where its bounce comes down) in the run-up to the corner');
           for (const p of O) {
             if (p.type !== 'pad') continue;
             st.pads++;
